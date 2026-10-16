@@ -5,18 +5,10 @@ import { SUBCATEGORY_LABELS, SLOT_LABELS } from "./config/categories.js";
 import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
 
 // Hardcoded target JIDs (from /debug/groups)
-const COMMUNITY_JIDS = [
+const TARGET_JIDS = [
   "120363410134784350@g.us", // Resellers - QRate By Shopdeck (community sub-group)
   "120363428254767701@g.us", // Resellers - QRate By Shopdeck - 2 (community sub-group)
 ];
-const ALL_JIDS = [
-  ...COMMUNITY_JIDS,
-  "120363411903988006@g.us", // Shopdeck - Focus Group - Reseller Channel
-];
-
-async function getTargetJids(communitiesOnly = false) {
-  return communitiesOnly ? COMMUNITY_JIDS : ALL_JIDS;
-}
 
 // ── Festival calendar ─────────────────────────────────────────────────────────
 // Show tag when within 28 days before the festival start
@@ -52,7 +44,7 @@ function fmtOrders(n) {
   return `${n}+`;
 }
 
-const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
 
 // ── Combined text message ─────────────────────────────────────────────────────
 function buildCombinedText(products, slot) {
@@ -124,7 +116,8 @@ async function fetchImage(url, attempt = 1) {
 }
 
 // ── Main send ─────────────────────────────────────────────────────────────────
-export async function sendSlot(slot, communitiesOnly = false) {
+// Returns { sent, count } so the scheduler can record what happened to the slot
+export async function sendSlot(slot) {
   const slotTag = `${slot.hour}:${String(slot.minute || 0).padStart(2, "0")}`;
 
   // Fetch a 5× pool so we can replace products whose images fail
@@ -132,10 +125,10 @@ export async function sendSlot(slot, communitiesOnly = false) {
 
   if (!candidates.length) {
     console.log(`[Slot ${slotTag}] No eligible ${slot.category} products — skipping`);
-    return;
+    return { sent: false, count: 0 };
   }
 
-  const targetJids = await getTargetJids(communitiesOnly);
+  const targetJids = TARGET_JIDS;
 
   // Fetch images for all candidates in parallel — BEFORE any WA sends
   const fetched = await Promise.all(
@@ -156,7 +149,7 @@ export async function sendSlot(slot, communitiesOnly = false) {
 
   if (!selected.length) {
     console.log(`[Slot ${slotTag}] No products after selection — skipping`);
-    return;
+    return { sent: false, count: 0 };
   }
 
   const products = selected.map(x => x.product);
@@ -195,4 +188,5 @@ export async function sendSlot(slot, communitiesOnly = false) {
 
   const label = products[0]?.category_l2 || SUBCATEGORY_LABELS[products[0]?.clean_product_type] || "?";
   console.log(`✓ [${slotTag}] ${slot.category} | ${products.length} products | ${label}`);
+  return { sent: true, count: products.length };
 }

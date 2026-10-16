@@ -1,6 +1,8 @@
 import cron from "node-cron";
-import { DAILY_SLOTS } from "./config/schedule.js";
+import { MIN_GAP_MINUTES, MAX_LATE_MINUTES } from "./config/schedule.js";
 import { sendSlot } from "./sender.js";
+import { nowIST, getOrCreatePlan, savePlan, planSummary } from "./slot_planner.js";
+import { TEST_GROUP_JID } from "./pending_changes.js";
 import { runDailyLearning } from "./learning.js";
 import { checkOrders } from "./orders.js";
 import { startNudgeCampaign } from "./nudge.js";
@@ -8,25 +10,82 @@ import { warmCache } from "./cache.js";
 import { sendYesterdayReport, sendTodayReport, processWelcomeQueue, pollCommunityMembers } from "./community.js";
 import { seedConvo } from "./bot.js";
 import { runResellerPlanner } from "./reseller_planner.js";
-import { sendDailyResellerCampaign } from "./reseller_sender.js";
+import { sendDailyResellerCampaign, isResellerCampaignRunning } from "./reseller_sender.js";
 import client from "./client/whatsapp.js";
 
-export function startScheduler() {
-  for (const slot of DAILY_SLOTS) {
-    cron.schedule(
-      `${slot.minute} ${slot.hour} * * *`,
-      async () => {
-        const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-        console.log(`[Scheduler] ${now} → ${slot.category} (${slot.aovBucket} AOV)`);
-        try {
-          await sendSlot(slot);
-        } catch (err) {
-          console.error(`[Scheduler] Slot ${slot.hour}:${String(slot.minute).padStart(2,"0")} failed:`, err.message);
-        }
-      },
-      { timezone: "Asia/Kolkata" }
-    );
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// ── Group broadcast tick ──────────────────────────────────────────────────────
+// Runs every minute. Sends at most one due slot from today's plan, never within
+// MIN_GAP_MINUTES of the previous send, and skips anything over MAX_LATE_MINUTES late.
+let ticking = false;
+
+async function slotTick() {
+  if (ticking) return;
+  ticking = true;
+  try {
+    const { date, minutes } = nowIST();
+    if (minutes < 6 * 60) return; // plan + summary go out from 6am
+    const plan = getOrCreatePlan(date);
+    if (!client.isReady) return;
+
+    if (!plan.summary_sent) {
+      await client.sendTextMessage(TEST_GROUP_JID, planSummary(plan));
+      plan.summary_sent = true;
+      savePlan(plan);
+    }
+
+    // Don't overlap with the personalised reseller sends
+    if (isResellerCampaignRunning()) return;
+
+    let changed = false;
+    for (const s of plan.slots) {
+      if (s.status === "pending" && minutes - s.minutes > MAX_LATE_MINUTES) {
+        s.status = "missed";
+        changed = true;
+        console.log(`[Scheduler] ${s.time} ${s.category} missed (bot was not ready in time)`);
+      }
+    }
+
+    const next = plan.slots.find((s) => s.status === "pending" && s.minutes <= minutes);
+    const sinceLast = plan.last_sent_at ? Date.now() - new Date(plan.last_sent_at).getTime() : Infinity;
+
+    if (next && sinceLast >= MIN_GAP_MINUTES * 60 * 1000) {
+      console.log(`[Scheduler] ${date} ${next.time} → ${next.category}`);
+      // Mark before sending — if the process dies mid-send, the slot is never re-sent
+      next.status = "sending";
+      next.started_at = new Date().toISOString();
+      savePlan(plan);
+      try {
+        const result = await sendSlot({
+          hour:     Math.floor(next.minutes / 60),
+          minute:   next.minutes % 60,
+          category: next.category,
+        });
+        next.status   = result.sent ? "sent" : "skipped";
+        next.products = result.count;
+        if (result.sent) plan.last_sent_at = new Date().toISOString();
+      } catch (err) {
+        next.status = "failed";
+        next.error  = err.message;
+        console.error(`[Scheduler] Slot ${next.time} failed:`, err.message);
+      }
+      changed = true;
+    }
+
+    if (changed) savePlan(plan);
+  } catch (err) {
+    console.error("[Scheduler] Tick failed:", err.message);
+  } finally {
+    ticking = false;
   }
+}
+
+export function startScheduler() {
+  // Every minute, 6:00am–8:59pm IST. The first tick of the day builds the plan
+  // and sends it to the test group; later ticks fire slots as they come due.
+  cron.schedule("* 6-20 * * *", slotTick, { timezone: "Asia/Kolkata" });
+  slotTick();
 
   // Daily cache refresh — 5:45am IST (fresh data before first slot)
   cron.schedule(
@@ -85,7 +144,7 @@ export function startScheduler() {
 
   // ── Daily nudge campaign ───────────────────────────────────────────────────
 
-  // Daily nudge campaign — 11am IST
+  // Daily nudge campaign — ~11am IST (randomised)
   // Also fires immediately on startup (once per IST day, deduped)
   let nudgeFiredDate = null;
 
@@ -100,7 +159,11 @@ export function startScheduler() {
     }
   }
 
-  cron.schedule("0 11 * * *", runNudge, { timezone: "Asia/Kolkata" });
+  // Fires at a random minute between 10:50 and 11:00am IST
+  cron.schedule("50 10 * * *",
+    async () => { await sleep(Math.random() * 10 * 60 * 1000); await runNudge(); },
+    { timezone: "Asia/Kolkata" }
+  );
 
   // Fire immediately on startup — covers initial deployment + any restart before 11am
   setTimeout(() => runNudge(), 5000);
@@ -116,10 +179,12 @@ export function startScheduler() {
     { timezone: "Asia/Kolkata" }
   );
 
-  // 11:10am IST — send personalised recommendations to each acquired reseller
-  // Offset 10 min from nudge (11:00am) to avoid concurrent WA sends
+  // Random minute between 11:10 and 11:20am IST — personalised recommendations
+  // to each acquired reseller. Starts after the nudge to avoid concurrent WA sends;
+  // group posts wait while this runs.
   cron.schedule("10 11 * * *",
     async () => {
+      await sleep(Math.random() * 10 * 60 * 1000);
       if (!client.isReady) return;
       try { await sendDailyResellerCampaign(); }
       catch (err) { console.error("[ResellerSender] Campaign failed:", err.message); }
@@ -127,8 +192,5 @@ export function startScheduler() {
     { timezone: "Asia/Kolkata" }
   );
 
-  const slotSummary = DAILY_SLOTS.map(
-    (s) => `${s.hour}:${String(s.minute).padStart(2, "0")} ${s.category}`
-  ).join(" · ");
-  console.log(`Scheduler started — slots: ${slotSummary}`);
+  console.log("Scheduler started — group posts follow today's random plan (see /slots/today)");
 }

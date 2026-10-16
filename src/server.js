@@ -3,7 +3,9 @@ import QRCode from "qrcode";
 import fs from "fs";
 import client from "./client/whatsapp.js";
 import { sendSlot } from "./sender.js";
-import { DAILY_SLOTS } from "./config/schedule.js";
+import { SLOT_COUNTS } from "./config/schedule.js";
+import { nowIST, getOrCreatePlan, buildPlan } from "./slot_planner.js";
+import { getStockReport } from "./ranking.js";
 import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sender.js";
 
@@ -66,33 +68,47 @@ export function startQRServer() {
     res.json(summary);
   });
 
-  // Manual trigger — fire any slot immediately
-  // Usage: /trigger?category=jewellery&aov=high
-  //        /trigger?hour=19
-  //        /trigger?category=kurti  (picks first matching)
-  // Add &targets=communities to send to communities only (not focus group)
+  // Manual trigger — post one category to both groups right now
+  // Usage: /trigger?category=kurti
+  // Doesn't change today's plan.
   app.get("/trigger", async (req, res) => {
     if (!client.isReady) return res.status(503).json({ error: "WhatsApp not connected" });
 
-    const { category, aov, hour, targets } = req.query;
-    let slot;
-
-    if (category && aov) {
-      slot = DAILY_SLOTS.find((s) => s.category === category && s.aovBucket === aov);
-    } else if (hour) {
-      slot = DAILY_SLOTS.find((s) => s.hour === parseInt(hour));
-    } else if (category) {
-      slot = DAILY_SLOTS.find((s) => s.category === category);
-    } else {
-      return res.status(400).json({ error: "Pass ?category=kurti&aov=high or ?hour=19", slots: DAILY_SLOTS });
+    const { category } = req.query;
+    if (!category || !SLOT_COUNTS[category]) {
+      return res.status(400).json({ error: "Pass ?category=<one of the categories>", categories: Object.keys(SLOT_COUNTS) });
     }
 
-    if (!slot) return res.status(404).json({ error: "No matching slot found", slots: DAILY_SLOTS });
+    const { minutes } = nowIST();
+    const slot = { hour: Math.floor(minutes / 60), minute: minutes % 60, category };
+    res.json({ message: `Firing: ${category}` });
+    sendSlot(slot).catch((e) => console.error("[/trigger]", e));
+  });
 
-    const onlyCommunities = targets === "communities";
-    const tag = `${slot.hour}:${String(slot.minute).padStart(2,"0")} ${slot.category} (${slot.aovBucket})`;
-    res.json({ message: `Firing: ${tag}${onlyCommunities ? " — communities only" : ""}` });
-    sendSlot(slot, onlyCommunities).catch((e) => console.error("[/trigger]", e));
+  // ── Group broadcast plan ────────────────────────────────────────────────────
+
+  // Today's random plan and what has been sent so far
+  app.get("/slots/today", (_req, res) => {
+    res.json(getOrCreatePlan(nowIST().date));
+  });
+
+  // Sample plans for the next few days — nothing is saved or sent
+  // Usage: /slots/preview?days=7
+  app.get("/slots/preview", (req, res) => {
+    const days = Math.min(parseInt(req.query.days) || 7, 31);
+    const plans = Array.from({ length: days }, (_, i) =>
+      buildPlan(`sample-day-${i + 1}`).slots.map((s) => `${s.time} ${s.category}`)
+    );
+    res.json(plans);
+  });
+
+  // How many fresh products each category has left, and how many days that covers
+  app.get("/stock", async (_req, res) => {
+    try {
+      res.json(await getStockReport());
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── Acquired reseller endpoints ─────────────────────────────────────────────

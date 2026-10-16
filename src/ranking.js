@@ -1,6 +1,6 @@
 import { getProductMap } from "./cache.js";
 import { CATEGORY_TYPES } from "./config/categories.js";
-import { MIN_L30D_ORDERS, PRODUCTS_PER_SHARE } from "./config/schedule.js";
+import { MIN_L30D_ORDERS, PRODUCTS_PER_SHARE, SLOT_COUNTS } from "./config/schedule.js";
 import { getRecentlyShared } from "./history.js";
 import { loadWeights, loadSubcategoryPerf } from "./learning.js";
 
@@ -39,24 +39,29 @@ function subcatBoost(subPerf, sc, catAvg) {
   return Math.max(0.7, Math.min(1.5, ratio)); // clamp so one great day doesn't dominate
 }
 
+// Products that belong in a slot category (before the "recently shared" filter)
+function categoryProducts(products, category) {
+  const validTypes = new Set(CATEGORY_TYPES[category] || []);
+  const expectedL1 = CATEGORY_L1_MAP[category];
+
+  return [...products.values()].filter((p) => {
+    if (!validTypes.has(p.clean_product_type))                        return false;
+    // L1 guard: only applies for categories that have an L1 entry
+    if (expectedL1 && p.category_l1 && p.category_l1 !== expectedL1) return false;
+    if (p.orders_last_30d < MIN_L30D_ORDERS)                         return false;
+    // Drop anything explicitly marketed to men/boys — catches mismapped types
+    if (MALE_NAME_PATTERN.test(p.product_name))                       return false;
+    return true;
+  });
+}
+
 export async function getRankedForSlot({ category }) {
   const weights   = loadWeights();
   const recentIds = getRecentlyShared();
   const products  = await getProductMap();
 
-  const validTypes = new Set(CATEGORY_TYPES[category] || []);
-  const expectedL1 = CATEGORY_L1_MAP[category];
-
-  const candidates = [...products.values()].filter((p) => {
-    if (!validTypes.has(p.clean_product_type))                        return false;
-    // L1 guard: only applies for categories that have an L1 entry
-    if (expectedL1 && p.category_l1 && p.category_l1 !== expectedL1) return false;
-    if (p.orders_last_30d < MIN_L30D_ORDERS)                         return false;
-    if (recentIds.has(p.customer_product_short_id))                   return false;
-    // Drop anything explicitly marketed to men/boys — catches mismapped types
-    if (MALE_NAME_PATTERN.test(p.product_name))                       return false;
-    return true;
-  });
+  const candidates = categoryProducts(products, category)
+    .filter((p) => !recentIds.has(p.customer_product_short_id));
 
   if (!candidates.length) return [];
 
@@ -115,4 +120,25 @@ export async function pickSlotProducts(slot, poolSize = PRODUCTS_PER_SHARE) {
   const best = groups.get(bestKey) || [];
   if (!best.length) return [];
   return best.slice(0, poolSize);
+}
+
+// Per-category stock: how many products exist, how many are fresh (not shared
+// in the no-repeat window), and roughly how many days of posts that covers.
+export async function getStockReport() {
+  const recentIds = getRecentlyShared();
+  const products  = await getProductMap();
+
+  return Object.entries(SLOT_COUNTS).map(([category, postsPerDay]) => {
+    const all      = categoryProducts(products, category);
+    const fresh    = all.filter((p) => !recentIds.has(p.customer_product_short_id)).length;
+    const perDay   = postsPerDay * PRODUCTS_PER_SHARE;
+    return {
+      category,
+      posts_per_day:    postsPerDay,
+      products_per_day: perDay,
+      total_products:   all.length,
+      fresh_products:   fresh,
+      days_of_stock:    Math.floor(fresh / perDay),
+    };
+  });
 }

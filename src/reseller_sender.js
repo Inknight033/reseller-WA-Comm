@@ -139,7 +139,20 @@ async function sendToReseller(reseller, overrideJid = null) {
 
 // ── Daily campaign ────────────────────────────────────────────────────────────
 // Reads today's plan (generating it if missing) and sends to all resellers
+// Group posts check this so they don't send while the campaign is running
+let _campaignRunning = false;
+export const isResellerCampaignRunning = () => _campaignRunning;
+
 export async function sendDailyResellerCampaign() {
+  _campaignRunning = true;
+  try {
+    await runCampaign();
+  } finally {
+    _campaignRunning = false;
+  }
+}
+
+async function runCampaign() {
   let plan = loadTodayPlan();
   if (!plan) {
     console.log("[ResellerSender] No plan for today — running planner first…");

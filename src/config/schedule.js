@@ -1,30 +1,38 @@
-// 22 slots/day — every 30 min, 9:00am–7:30pm IST (11 hours × 2 slots)
-// Distribution: Mangalsutra ×3, Necklace ×3, Kurti ×3, Earring ×2, Saree ×2,
-//               Bangle ×2, Handbag ×2, Coord ×2, Slipper ×2, Watch ×1
-export const DAILY_SLOTS = [
-  { hour: 9,  minute: 0,  category: "mangalsutra" },
-  { hour: 9,  minute: 30, category: "necklace"    },
-  { hour: 10, minute: 0,  category: "kurti"       },
-  { hour: 10, minute: 30, category: "earring"     },
-  { hour: 11, minute: 0,  category: "saree"       },
-  { hour: 11, minute: 30, category: "bangle"      },
-  { hour: 12, minute: 0,  category: "mangalsutra" },
-  { hour: 12, minute: 30, category: "handbag"     },
-  { hour: 13, minute: 0,  category: "necklace"    },
-  { hour: 13, minute: 30, category: "coord"       },
-  { hour: 14, minute: 0,  category: "kurti"       },
-  { hour: 14, minute: 30, category: "earring"     },
-  { hour: 15, minute: 0,  category: "bangle"      },
-  { hour: 15, minute: 30, category: "mangalsutra" },
-  { hour: 16, minute: 0,  category: "saree"       },
-  { hour: 16, minute: 30, category: "necklace"    },
-  { hour: 17, minute: 0,  category: "kurti"       },
-  { hour: 17, minute: 30, category: "coord"       },
-  { hour: 18, minute: 0,  category: "handbag"     },
-  { hour: 18, minute: 30, category: "slipper"     },
-  { hour: 19, minute: 0,  category: "watch"       },
-  { hour: 19, minute: 30, category: "slipper"     },
+// Daily broadcast plan settings. The actual times and category order are
+// generated fresh each day by slot_planner.js — nothing here is a fixed clock time.
+
+// How many posts each category gets per day (15 posts/day total)
+export const SLOT_COUNTS = {
+  mangalsutra: 2,
+  necklace:    2,
+  kurti:       2,
+  earring:     2,
+  saree:       2,
+  bangle:      1,
+  handbag:     1,
+  coord:       1,
+  slipper:     1,
+  watch:       1,
+};
+
+// Broadcast window (IST). Posts land at random minutes inside it.
+export const WINDOW_START = { hour: 9,  minute: 0  };
+export const WINDOW_END   = { hour: 19, minute: 45 };
+
+// Posts are never closer together than this
+export const MIN_GAP_MINUTES = 20;
+
+// Categories posted twice a day get one post before this time and one after
+export const MIDDAY_SPLIT = { hour: 14, minute: 0 };
+
+// No group posts inside these windows (IST) — the nudge and personalised
+// reseller sends run here, and we don't want everything firing at once
+export const QUIET_WINDOWS = [
+  { start: { hour: 10, minute: 45 }, end: { hour: 11, minute: 30 } },
 ];
 
-export const PRODUCTS_PER_SHARE = 4;
+// A post that is this late (e.g. the bot was down) is skipped, not sent
+export const MAX_LATE_MINUTES = 90;
+
+export const PRODUCTS_PER_SHARE = 6;
 export const MIN_L30D_ORDERS    = 0;

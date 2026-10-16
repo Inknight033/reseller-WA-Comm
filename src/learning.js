@@ -90,7 +90,7 @@ async function callClaude(dateStr, sharedEntries, organicRows, currentWeights) {
   ).sort((a, b) => (b[F14915.orders] || 0) - (a[F14915.orders] || 0));
 
   const prompt = `You are the analytics brain for ShopDeck's WhatsApp reseller broadcaster.
-Yesterday (${dateStr}) we shared ${sharedEntries.length} products to ~3 reseller WA groups.
+Yesterday (${dateStr}) we shared ${sharedEntries.length} products to 2 reseller WA groups.
 
 SHARED → GOT ≥1 ORDER (${ordered.length}):
 ${ordered.slice(0, 6).map(productLine).join("\n") || "none"}
