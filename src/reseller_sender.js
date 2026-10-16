@@ -2,6 +2,7 @@ import client from "./client/whatsapp.js";
 import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { recordSharedForReseller } from "./reseller_history.js";
 import { getJid, getDefaultJid, storeJid } from "./reseller_jids.js";
+import { TEST_MODE, TEST_JIDS } from "./test_mode.js";
 
 // ── Message variants ──────────────────────────────────────────────────────────
 // Varied so it doesn't look bot-like when received multiple days in a row
@@ -160,6 +161,24 @@ async function runCampaign() {
   }
   if (!plan?.length) {
     console.log("[ResellerSender] Empty plan — nothing to send");
+    return;
+  }
+
+  // Test mode: one seller's picks per tester instead of messaging real sellers.
+  // Nothing is recorded in reseller history.
+  if (TEST_MODE) {
+    console.log(`[ResellerSender] Test mode — sending ${TEST_JIDS.length} sample(s) to testers instead of ${plan.length} resellers`);
+    for (let i = 0; i < TEST_JIDS.length && i < plan.length; i++) {
+      const reseller = plan[i];
+      try {
+        await client.sendTextMessage(TEST_JIDS[i],
+          `🧪 *TEST* — today's picks for ${reseller.reseller_name} (1 of ${plan.length} sellers who'd get these):`);
+      } catch (e) {
+        console.warn("[ResellerSender] Test header failed:", e.message);
+      }
+      await sendToReseller(reseller, TEST_JIDS[i]);
+      await sleep(4000 + Math.random() * 3000);
+    }
     return;
   }
 

@@ -7,6 +7,7 @@ import { loadPending, applyPending, TEST_GROUP_JID } from "./pending_changes.js"
 import { resolveContactJids } from "./nudge.js";
 import { pollCommunityMembers } from "./community.js";
 import { handleDM, hasPendingEscalation, handleEscalationReply } from "./bot.js";
+import { TEST_MODE, isTester, resolveTesterJids } from "./test_mode.js";
 
 process.on("unhandledRejection", (err) => {
   console.error("Unhandled rejection:", err?.message || err);
@@ -39,6 +40,12 @@ async function main() {
     // Never reply to groups
     if (jid.endsWith("@g.us")) return;
 
+    // Test mode: only the testers get chatbot replies
+    if (TEST_MODE && !isTester(jid)) {
+      console.log(`[Router] Test mode — not replying to ${jid}`);
+      return;
+    }
+
     // All DMs → unified bot (handles resellers, nudge contacts, welcome replies — everyone)
     handleDM(jid, text).catch(e => console.error("[Bot] DM handler error:", e.message));
   });
@@ -46,6 +53,7 @@ async function main() {
   client.once("ready", () => {
     startScheduler();
     warmCache().catch((e) => console.error("[cache] Warm failed:", e?.message));
+    resolveTesterJids(client.sock).catch((e) => console.error("[TestMode] JID resolve failed:", e.message));
     resolveContactJids(client.sock).catch((e) => console.error("[Nudge] JID resolve failed:", e.message));
     // Initial snapshot — subsequent polls (every 30 min) will diff against this
     pollCommunityMembers().catch((e) => console.error("[Community] Initial poll failed:", e.message));

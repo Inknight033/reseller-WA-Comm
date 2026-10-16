@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import client from "./client/whatsapp.js";
 import { TEST_GROUP_JID } from "./pending_changes.js";
+import { TEST_MODE, TEST_JIDS } from "./test_mode.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VIDEO_PATH = path.join(__dirname, "../assets/intro.mp4");
@@ -242,6 +243,34 @@ export async function processWelcomeQueue(onSent) {
   saveData(data);
 
   if (!toProcess.length) return;
+
+  // Test mode: don't message real joiners. Send one sample welcome to the
+  // testers, at most once a day.
+  if (TEST_MODE) {
+    const today = todayIST();
+    if (data.testWelcomeDate === today) return;
+    data.testWelcomeDate = today;
+    saveData(data);
+    console.log(`[Community] Test mode — ${toProcess.length} joiner(s) not messaged; sending sample welcome to testers`);
+    const entry = toProcess[0];
+    for (const jid of TEST_JIDS) {
+      try {
+        await client.sendTextMessage(jid,
+          `🧪 *TEST* — welcome message a new member would get (${toProcess.length} joined since last check):`);
+        const videoBuffer = getVideoBuffer();
+        if (videoBuffer) {
+          await client.sock.sendMessage(jid, { video: videoBuffer, mimetype: "video/mp4" });
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        await client.sendTextMessage(jid, buildWelcomeMessage(entry.groupJid));
+        await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
+      } catch (e) {
+        console.warn(`[Community] Test welcome failed for ${jid}:`, e.message);
+      }
+    }
+    return;
+  }
+
   console.log(`[Community] Sending ${toProcess.length} welcome message(s)`);
 
   for (const entry of toProcess) {
