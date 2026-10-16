@@ -164,6 +164,13 @@ class WhatsAppClient extends EventEmitter {
         const isTestGroup = jid === "120363431273030908@g.us";
         if (!jid?.endsWith("@g.us") || isTestGroup) {
           console.log(`[WA] recv [${src}] type=${type} jid=${jid} fromMe=${msg.key.fromMe} decrypted=${!!msg.message}`);
+          // Diagnostics: why a DM couldn't be decrypted, and what a decrypted DM contains
+          if (!msg.key.fromMe && !msg.message && msg.messageStubParameters?.length) {
+            console.log(`[WA] decrypt failed jid=${jid}: ${msg.messageStubParameters.join(" | ")}`);
+          }
+          if (!msg.key.fromMe && msg.message) {
+            console.log(`[WA] content jid=${jid} keys=${Object.keys(msg.message).join(",")}`);
+          }
         }
 
         if (msg.key.fromMe) continue;
