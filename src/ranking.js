@@ -1,7 +1,7 @@
 import { getProductMap } from "./cache.js";
 import { CATEGORY_TYPES } from "./config/categories.js";
 import { MIN_L30D_ORDERS, PRODUCTS_PER_SHARE, SLOT_COUNTS } from "./config/schedule.js";
-import { getRecentlyShared } from "./history.js";
+import { getRecentlyShared, getRecentlySharedTimes } from "./history.js";
 import { loadWeights, loadSubcategoryPerf } from "./learning.js";
 
 // Maps slot category names → category_l1 strings from product_labels.json.
@@ -60,10 +60,13 @@ export async function getRankedForSlot({ category }) {
   const recentIds = getRecentlyShared();
   const products  = await getProductMap();
 
-  const candidates = categoryProducts(products, category)
-    .filter((p) => !recentIds.has(p.customer_product_short_id));
+  const inCategory = categoryProducts(products, category);
+  const candidates = inCategory.filter((p) => !recentIds.has(p.customer_product_short_id));
 
-  if (!candidates.length) return [];
+  // Running low on fresh products → top up with the ones shared longest ago
+  const reused = candidates.length < REUSE_POOL ? oldestShared(inCategory, REUSE_POOL - candidates.length) : [];
+
+  if (!candidates.length) return reused;
 
   // Signals — all normalised 0→1
   // Priority: 40% reseller L30d orders, 30% overall L30d orders, 15% L7d shares, 15% margin
@@ -82,7 +85,22 @@ export async function getRankedForSlot({ category }) {
   }));
 
   scored.sort((a, b) => b._score - a._score);
-  return scored;
+  return [...scored, ...reused];
+}
+
+// Enough to fill a post even if a few images fail to load
+const REUSE_POOL = PRODUCTS_PER_SHARE * 2;
+
+// Recently shared products in this category, oldest share first. Scores are tiny
+// so they always rank below fresh products and the oldest comes first.
+function oldestShared(inCategory, count) {
+  const times = getRecentlySharedTimes();
+  const old = inCategory
+    .filter((p) => times.has(p.customer_product_short_id))
+    .sort((a, b) => times.get(a.customer_product_short_id) - times.get(b.customer_product_short_id))
+    .slice(0, count);
+  if (old.length) console.log(`[Ranking] Low on fresh products — reusing ${old.length} shared longest ago`);
+  return old.map((p, i) => ({ ...p, _score: 0.001 * (1 - i / old.length), _reused: true }));
 }
 
 // Pick products for a slot, grouped by same sub-category.

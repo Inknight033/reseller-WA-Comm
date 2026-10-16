@@ -33,6 +33,18 @@ export function getRecentlyShared() {
   );
 }
 
+// Map of product_id → last time (ms) it was sent, for products inside the no-repeat window
+export function getRecentlySharedTimes() {
+  const cutoff = Date.now() - NO_REPEAT_DAYS * 24 * 60 * 60 * 1000;
+  const times = new Map();
+  for (const e of load()) {
+    const t = new Date(e.sent_at).getTime();
+    if (t <= cutoff) continue;
+    if (!times.has(e.product_id) || times.get(e.product_id) < t) times.set(e.product_id, t);
+  }
+  return times;
+}
+
 // Record a batch of products sent in one slot
 export function recordShared(products, slotMeta) {
   ensureDir();

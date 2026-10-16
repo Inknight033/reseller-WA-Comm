@@ -1,16 +1,17 @@
 // Daily broadcast plan settings. The actual times and category order are
 // generated fresh each day by slot_planner.js — nothing here is a fixed clock time.
 
-// How many posts each category gets per day (15 posts/day total)
+// How many posts each category gets per day (15 posts/day total).
+// Co-ord is left out: its products have no product type in the catalogue data,
+// so the bot can't find any. Add `coord: 1` back once that data is fixed.
 export const SLOT_COUNTS = {
   mangalsutra: 2,
   necklace:    2,
   kurti:       2,
   earring:     2,
   saree:       2,
-  bangle:      1,
+  bangle:      2,
   handbag:     1,
-  coord:       1,
   slipper:     1,
   watch:       1,
 };
