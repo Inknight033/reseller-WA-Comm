@@ -1,4 +1,6 @@
 import cron from "node-cron";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
 import { MIN_GAP_MINUTES, MAX_LATE_MINUTES } from "./config/schedule.js";
 import { sendSlot } from "./sender.js";
 import { nowIST, getOrCreatePlan, savePlan, planSummary } from "./slot_planner.js";
@@ -30,7 +32,12 @@ async function slotTick() {
     if (!client.isReady) return;
 
     if (!plan.summary_sent) {
-      await client.sendTextMessage(TEST_GROUP_JID, planSummary(plan));
+      // Best effort — a failed summary (e.g. bot not in the test group) must never block posts
+      try {
+        await client.sendTextMessage(TEST_GROUP_JID, planSummary(plan));
+      } catch (err) {
+        console.warn("[Scheduler] Plan summary not sent to test group:", err.message);
+      }
       plan.summary_sent = true;
       savePlan(plan);
     }
@@ -145,13 +152,16 @@ export function startScheduler() {
   // ── Daily nudge campaign ───────────────────────────────────────────────────
 
   // Daily nudge campaign — ~11am IST (randomised)
-  // Also fires immediately on startup (once per IST day, deduped)
-  let nudgeFiredDate = null;
+  // Last nudge date is saved to disk so a restart/redeploy doesn't re-send it the same day
+  const NUDGE_STATE = join(process.env.DATA_DIR || "data", "nudge_state.json");
 
   async function runNudge() {
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-    if (nudgeFiredDate === today) return;
-    nudgeFiredDate = today;
+    let lastDate = null;
+    try { lastDate = JSON.parse(readFileSync(NUDGE_STATE, "utf8")).date; } catch {}
+    if (lastDate === today) return;
+    mkdirSync(dirname(NUDGE_STATE), { recursive: true });
+    writeFileSync(NUDGE_STATE, JSON.stringify({ date: today }));
     try {
       await startNudgeCampaign(seedConvo);
     } catch (err) {
@@ -165,8 +175,12 @@ export function startScheduler() {
     { timezone: "Asia/Kolkata" }
   );
 
-  // Fire immediately on startup — covers initial deployment + any restart before 11am
-  setTimeout(() => runNudge(), 5000);
+  // On startup, catch up only if the bot was down during this morning's nudge window
+  // (11am–1pm IST). Outside that, wait for the next scheduled run.
+  setTimeout(() => {
+    const { minutes } = nowIST();
+    if (minutes >= 11 * 60 && minutes < 13 * 60) runNudge();
+  }, 5000);
 
   // ── Acquired reseller personalised sends ──────────────────────────────────
 

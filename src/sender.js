@@ -159,30 +159,38 @@ export async function sendSlot(slot) {
 
   const text = buildCombinedText(products, slot);
 
-  // Send to each target
+  // Send to each target — one group failing (e.g. bot not a member) doesn't stop the others
+  let delivered = 0;
   for (const jid of targetJids) {
-    // 1. Quick image burst → WA auto-albums them
-    for (let i = 0; i < products.length; i++) {
-      if (buffers[i]) {
-        try {
-          const imgSent = await client.sock.sendMessage(jid, { image: buffers[i], mimetype: "image/jpeg" });
-          if (imgSent?.key?.id) client.registerSentMsg(imgSent.key.id, { imageMessage: {} });
-        } catch (imgErr) {
-          console.warn(`[Slot] Image ${i} send failed for ${jid}: ${imgErr.message}`);
+    try {
+      // 1. Quick image burst → WA auto-albums them
+      for (let i = 0; i < products.length; i++) {
+        if (buffers[i]) {
+          try {
+            const imgSent = await client.sock.sendMessage(jid, { image: buffers[i], mimetype: "image/jpeg" });
+            if (imgSent?.key?.id) client.registerSentMsg(imgSent.key.id, { imageMessage: {} });
+          } catch (imgErr) {
+            console.warn(`[Slot] Image ${i} send failed for ${jid}: ${imgErr.message}`);
+          }
         }
+        await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
       }
-      await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
+      // 2. Brief pause so album renders first
+      await new Promise((r) => setTimeout(r, 1500));
+      // 3. One combined text
+      await client.sendTextMessage(jid, text);
+      delivered++;
+    } catch (err) {
+      console.error(`[Slot ${slotTag}] Send to ${jid} failed: ${err.message}`);
     }
-    // 2. Brief pause so album renders first
-    await new Promise((r) => setTimeout(r, 1500));
-    // 3. One combined text
-    await client.sendTextMessage(jid, text);
 
     // Gap between targets to avoid flood detection
     if (targetJids.indexOf(jid) < targetJids.length - 1) {
       await new Promise((r) => setTimeout(r, 3000 + Math.random() * 2000));
     }
   }
+
+  if (!delivered) throw new Error("Post failed for every group");
 
   recordShared(products, slot);
 
