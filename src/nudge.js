@@ -1,6 +1,7 @@
 import client from "./client/whatsapp.js";
 import { getProductMap } from "./cache.js";
 import { loadWeights } from "./learning.js";
+import { DMS_ENABLED } from "./test_mode.js";
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,10 @@ export async function sendNudgeProducts(jid, pool) {
 // onSent(jid, text) — called after each successful opening send so bot.js can
 // seed the conversation history for the right JID.
 export async function startNudgeCampaign(onSent) {
+  if (!DMS_ENABLED) {
+    console.log("[Nudge] DMs are off — skipping");
+    return;
+  }
   console.log("[Nudge] Starting daily campaign…");
 
   for (const contact of CONTACTS) {

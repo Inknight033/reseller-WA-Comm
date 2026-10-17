@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import client from "./client/whatsapp.js";
 import { TEST_GROUP_JID } from "./pending_changes.js";
-import { TEST_MODE, TEST_JIDS } from "./test_mode.js";
+import { TEST_MODE, TEST_JIDS, DMS_ENABLED } from "./test_mode.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VIDEO_PATH = path.join(__dirname, "../assets/intro.mp4");
@@ -243,6 +243,11 @@ export async function processWelcomeQueue(onSent) {
   saveData(data);
 
   if (!toProcess.length) return;
+
+  if (!DMS_ENABLED) {
+    console.log(`[Community] DMs are off — ${toProcess.length} joiner(s) not welcomed`);
+    return;
+  }
 
   // Test mode: don't message real joiners. Send one sample welcome to the
   // testers, at most once a day.

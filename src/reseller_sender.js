@@ -2,7 +2,7 @@ import client from "./client/whatsapp.js";
 import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { recordSharedForReseller } from "./reseller_history.js";
 import { getJid, getDefaultJid, storeJid } from "./reseller_jids.js";
-import { TEST_MODE, TEST_JIDS } from "./test_mode.js";
+import { TEST_MODE, TEST_JIDS, DMS_ENABLED } from "./test_mode.js";
 
 // ── Message variants ──────────────────────────────────────────────────────────
 // Varied so it doesn't look bot-like when received multiple days in a row
@@ -145,6 +145,10 @@ let _campaignRunning = false;
 export const isResellerCampaignRunning = () => _campaignRunning;
 
 export async function sendDailyResellerCampaign() {
+  if (!DMS_ENABLED) {
+    console.log("[ResellerSender] DMs are off — skipping campaign");
+    return;
+  }
   _campaignRunning = true;
   try {
     await runCampaign();
@@ -199,6 +203,10 @@ async function runCampaign() {
 // Generates plan for the given reseller entry and sends to testJid (Arunabh's number).
 // Products are NOT recorded in reseller history — this is a dry-run preview.
 export async function previewResellerSend(reseller, testJid) {
+  if (!DMS_ENABLED) {
+    console.log("[ResellerSender] DMs are off — skipping preview");
+    return false;
+  }
   console.log(`[ResellerSender] Preview: ${reseller.reseller_name} → ${testJid}`);
   return sendToReseller(reseller, testJid);
 }

@@ -11,6 +11,11 @@
 
 export const TEST_MODE = process.env.TEST_MODE !== "false";
 
+// All direct messages (nudge, seller picks, welcome messages, chatbot replies)
+// are OFF unless the Railway variable DMS_ENABLED is set to "true".
+// Group posts and test-group reports are not affected.
+export const DMS_ENABLED = process.env.DMS_ENABLED === "true";
+
 export const TEST_PHONES = (process.env.TEST_PHONES || "919167856948,919553336937,919869446277")
   .split(",")
   .map((p) => p.trim())

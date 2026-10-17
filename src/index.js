@@ -7,7 +7,7 @@ import { loadPending, applyPending, TEST_GROUP_JID } from "./pending_changes.js"
 import { resolveContactJids } from "./nudge.js";
 import { pollCommunityMembers } from "./community.js";
 import { handleDM, hasPendingEscalation, handleEscalationReply } from "./bot.js";
-import { TEST_MODE, isTester, resolveTesterJids } from "./test_mode.js";
+import { TEST_MODE, DMS_ENABLED, isTester, resolveTesterJids } from "./test_mode.js";
 
 process.on("unhandledRejection", (err) => {
   console.error("Unhandled rejection:", err?.message || err);
@@ -39,6 +39,11 @@ async function main() {
 
     // Never reply to groups
     if (jid.endsWith("@g.us")) return;
+
+    if (!DMS_ENABLED) {
+      console.log(`[Router] DMs are off — not replying to ${jid}`);
+      return;
+    }
 
     // Test mode: only the testers get chatbot replies
     if (TEST_MODE && !isTester(jid)) {
