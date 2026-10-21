@@ -64,10 +64,6 @@ async function main() {
     pollCommunityMembers().catch((e) => console.error("[Community] Initial poll failed:", e.message));
   });
 
-  client.once("logged_out", () => {
-    console.error("WhatsApp logged out — restart and rescan QR");
-    process.exit(1);
-  });
 }
 
 main().catch((err) => {

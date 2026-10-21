@@ -243,18 +243,43 @@ class WhatsAppClient extends EventEmitter {
       if (connection === "close") {
         this.isReady = false;
         const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
-        const shouldReconnect = code !== DisconnectReason.loggedOut;
 
-        console.log(`WhatsApp disconnected (code ${code}), reconnecting: ${shouldReconnect}`);
-
-        if (shouldReconnect) {
-          setTimeout(() => this.connect(), 5000);
+        if (code === DisconnectReason.loggedOut) {
+          // 401: this device was unlinked. Clear the dead login and start fresh so a
+          // new QR appears at /qr — instead of exiting and crash-looping on restart.
+          console.error("WhatsApp logged this device out (401) — clearing login; scan the new QR at /qr");
+          this._clearAuth();
+          this._scheduleReconnect(5000);
+        } else if (code === DisconnectReason.forbidden) {
+          // 403: WhatsApp is refusing this number (usually restricted or banned).
+          // Retrying every few seconds doesn't help and may make it worse.
+          console.error("WhatsApp refused this number (403) — it may be restricted or banned. Retrying in 30 min");
+          this._scheduleReconnect(30 * 60 * 1000);
         } else {
-          console.error("Logged out — rescan QR to reconnect");
-          this.emit("logged_out");
+          console.log(`WhatsApp disconnected (code ${code}), reconnecting`);
+          this._scheduleReconnect(5000);
         }
       }
     });
+  }
+
+  // One pending reconnect at a time — close events can fire more than once
+  _scheduleReconnect(ms) {
+    if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this.connect();
+    }, ms);
+  }
+
+  _clearAuth() {
+    try {
+      const files = fs.readdirSync(AUTH_DIR);
+      for (const f of files) fs.unlinkSync(`${AUTH_DIR}/${f}`);
+      console.log(`[WhatsApp] Cleared ${files.length} auth files`);
+    } catch (e) {
+      if (e.code !== "ENOENT") console.warn("[WhatsApp] Auth clear failed:", e.message);
+    }
   }
 
   async findGroupByName(name) {
