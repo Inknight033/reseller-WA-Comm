@@ -46,6 +46,22 @@ async function slotTick() {
     if (isResellerCampaignRunning()) return;
 
     let changed = false;
+
+    // A slot still "sending" here was cut off by a restart (this process holds the
+    // tick lock, so nothing else is mid-send). Retry it once; give up the second time.
+    for (const s of plan.slots) {
+      if (s.status !== "sending") continue;
+      if (s.retried) {
+        s.status = "failed";
+        s.error  = "interrupted twice";
+      } else {
+        s.status  = "pending";
+        s.retried = true;
+        console.log(`[Scheduler] ${s.time} ${s.category} was interrupted — retrying once`);
+      }
+      changed = true;
+    }
+
     for (const s of plan.slots) {
       if (s.status === "pending" && minutes - s.minutes > MAX_LATE_MINUTES) {
         s.status = "missed";

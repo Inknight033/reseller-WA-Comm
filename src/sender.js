@@ -121,6 +121,17 @@ async function fetchImage(url, attempt = 1) {
   }
 }
 
+// WhatsApp sometimes never answers a send — fail it instead of hanging the bot
+function withTimeout(promise, ms, what) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms / 1000}s`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+const SEND_TIMEOUT_MS = 60 * 1000;
+
 // ── Main send ─────────────────────────────────────────────────────────────────
 // Returns { sent, count } so the scheduler can record what happened to the slot
 export async function sendSlot(slot) {
@@ -173,7 +184,10 @@ export async function sendSlot(slot) {
       for (let i = 0; i < products.length; i++) {
         if (buffers[i]) {
           try {
-            const imgSent = await client.sock.sendMessage(jid, { image: buffers[i], mimetype: "image/jpeg" });
+            const imgSent = await withTimeout(
+              client.sock.sendMessage(jid, { image: buffers[i], mimetype: "image/jpeg" }),
+              SEND_TIMEOUT_MS, `Image ${i}`
+            );
             if (imgSent?.key?.id) client.registerSentMsg(imgSent.key.id, { imageMessage: {} });
           } catch (imgErr) {
             console.warn(`[Slot] Image ${i} send failed for ${jid}: ${imgErr.message}`);
@@ -184,7 +198,7 @@ export async function sendSlot(slot) {
       // 2. Brief pause so album renders first
       await new Promise((r) => setTimeout(r, 1500));
       // 3. One combined text
-      await client.sendTextMessage(jid, text);
+      await withTimeout(client.sendTextMessage(jid, text), SEND_TIMEOUT_MS, "Post text");
       delivered++;
     } catch (err) {
       console.error(`[Slot ${slotTag}] Send to ${jid} failed: ${err.message}`);
