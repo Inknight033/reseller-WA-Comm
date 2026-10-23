@@ -44,6 +44,12 @@ function fmtOrders(n) {
   return `${n}+`;
 }
 
+// QRate dynamic link: opens the app on Android (Play Store if not installed),
+// the website on iPhone and desktop. The target URL must be fully encoded.
+function dynamicLink(url) {
+  return `https://link.blitzshopdeck.in/r?link=${encodeURIComponent(url)}&apn=com.shopdeck.qrate`;
+}
+
 const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
 
 // ── Combined text message ─────────────────────────────────────────────────────
@@ -71,7 +77,7 @@ function buildCombinedText(products, slot) {
     const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", marginLabel].filter(Boolean).join(" · ");
     if (statsLine) lines.push(statsLine);
 
-    lines.push(`🔗 ${p.qrate_url}`);
+    lines.push(`🔗 ${dynamicLink(p.qrate_url)}`);
     lines.push("");
   });
 
@@ -79,7 +85,7 @@ function buildCombinedText(products, slot) {
   lines.push("✅ No Shipping or Return charges · COD available");
   lines.push("🏆 Quality Guaranteed by Us — otherwise no questions asked return");
   lines.push("");
-  lines.push("🛒 Explore all categories: https://qrate.shopdeck.com/browse");
+  lines.push(`🛒 Explore all categories: ${dynamicLink("https://qrate.shopdeck.com/browse")}`);
   lines.push("📩 DM me for any help or specific product requests — I'll find and share!");
 
   return lines.join("\n");
