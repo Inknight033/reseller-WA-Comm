@@ -229,6 +229,19 @@ function isBusinessHours() {
 // onSent(jid, text) — called after each successful welcome send so bot.js can
 // seed the conversation history. Note: @lid JID seeded here may not match the
 // @s.whatsapp.net JID of subsequent replies — this is a WhatsApp limitation.
+// Manual sample: send the welcome (video + text) to one number so it can be reviewed.
+// Bypasses the DMs-off switch on purpose — only called for allow-listed numbers.
+export async function sendWelcomeSample(phone) {
+  const jid = `${phone}@s.whatsapp.net`;
+  const videoBuffer = getVideoBuffer();
+  if (videoBuffer) {
+    await client.sock.sendMessage(jid, { video: videoBuffer, mimetype: "video/mp4" });
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  await client.sendTextMessage(jid, buildWelcomeMessage(COMMUNITY_JIDS[0]));
+  console.log(`[Community] Sample welcome sent to ${jid}${videoBuffer ? " (with video)" : ""}`);
+}
+
 export async function processWelcomeQueue(onSent) {
   if (!isBusinessHours()) return;
 

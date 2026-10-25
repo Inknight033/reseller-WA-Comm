@@ -8,6 +8,8 @@ import { nowIST, getOrCreatePlan, buildPlan } from "./slot_planner.js";
 import { getStockReport } from "./ranking.js";
 import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sender.js";
+import { sendWelcomeSample } from "./community.js";
+import { SAMPLE_PHONES } from "./test_mode.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -83,6 +85,20 @@ export function startQRServer() {
     const slot = { hour: Math.floor(minutes / 60), minute: minutes % 60, category };
     res.json({ message: `Firing: ${category}` });
     sendSlot(slot).catch((e) => console.error("[/trigger]", e));
+  });
+
+  // Send a sample welcome message to an allow-listed number
+  // Usage: /welcome/sample?phone=917357969781
+  app.get("/welcome/sample", async (req, res) => {
+    if (!client.isReady) return res.status(503).json({ error: "WhatsApp not connected" });
+    const phone = String(req.query.phone || "").replace(/\D/g, "");
+    if (!SAMPLE_PHONES.has(phone)) return res.status(403).json({ error: "Number not on the sample list" });
+    try {
+      await sendWelcomeSample(phone);
+      res.json({ message: `Sample welcome sent to ${phone}` });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── Group broadcast plan ────────────────────────────────────────────────────

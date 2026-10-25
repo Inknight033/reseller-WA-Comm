@@ -23,6 +23,10 @@ export const TEST_PHONES = (process.env.TEST_PHONES || "919167856948,91955333693
 
 export const TEST_JIDS = TEST_PHONES.map((p) => `${p}@s.whatsapp.net`);
 
+// Numbers allowed to receive a manual sample welcome message (/welcome/sample).
+// Kept to a fixed list so the endpoint can't be used to message anyone else.
+export const SAMPLE_PHONES = new Set([...TEST_PHONES, "917357969781"]);
+
 // Testers can message from a phone-number JID or a newer @lid JID — learn both
 const _testerJids = new Set(TEST_JIDS);
 
