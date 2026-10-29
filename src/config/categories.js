@@ -1,109 +1,41 @@
-// Maps broadcast category names → actual clean_product_type slugs from Metabase
-// Slot category → sub-categories the slot can draw from
+// Post category → website sub-categories it can draw from.
+// Keys are "Category › Sub-category" from the website category mapping
+// (Metabase question METABASE_CATEGORY_QUESTION_ID, built on
+// csv_upload.reseller_website_category_mapping generated_l1 / generated_l2).
+// Names must match the mapping exactly — check them in Metabase before adding one.
+const sub = (category, ...subs) => subs.map((s) => `${category} › ${s}`);
+
 export const CATEGORY_TYPES = {
-  // ── Ethnic wear ─────────────────────────────────────────────────────────────
-  kurti: [
-    "womens_clothing__womens_ethnic_wear__kurta_set",
-    "womens_clothing__womens_ethnic_wear__kurti",
-  ],
-  saree: [
-    "womens_clothing__womens_ethnic_wear__saree",
-  ],
+  // ── Jewellery ────────────────────────────────────────────────────────────────
+  mangalsutra: sub("Jewellery", "Mangalsutras", "Mangalsutra Sets"),
+  necklace: sub("Jewellery",
+    "Necklace Sets", "Necklaces", "Chains", "Pendant Sets", "Pendants", "Jewellery Combo Sets"),
+  earring: sub("Jewellery", "Earrings"),
+  bangle: sub("Jewellery",
+    "Bangles & Bracelets", "Rings", "Anklets", "Hair Accessories", "Kamarbands"),
 
-  // ── Western wear ─────────────────────────────────────────────────────────────
-  coord: [
-    "womens_clothing__womens_western_wear__coord_set",
-  ],
+  // ── Ethnic wear (unstitched fabric and blouses left out) ────────────────────
+  kurti: sub("Kurtas, Kurtis & Sets",
+    "Kurta Pant & Dupatta Sets", "Kurta Sets - General", "Printed Kurtis", "Chikankari Kurtis",
+    "Kurtis - General/Other", "Kurta Palazzo Sets", "Chikankari Kurta Sets"),
+  saree: sub("Sarees",
+    "Silk Sarees", "Cotton Sarees", "Sarees - General/Other", "Linen Sarees",
+    "Banarasi Sarees", "Printed Sarees", "Handloom Sarees"),
 
-  // ── Jewellery — split into 4 specific slot types ──────────────────────────
-  mangalsutra: [
-    "womens_accessories__womens_fashion_jewellery__mangalsutra",
-    "womens_accessories__womens_fashion_jewellery__mangalsutra_set",
-  ],
-  necklace: [
-    "womens_accessories__womens_fashion_jewellery__necklace_set",
-    "womens_accessories__womens_fashion_jewellery__necklace",
-    "womens_accessories__womens_fashion_jewellery__jewellery_set",
-    "womens_accessories__womens_fashion_jewellery__pendant_set",
-    "womens_accessories__womens_fashion_jewellery__pendant",
-    "womens_accessories__womens_fashion_jewellery__chain",
-    "womens_accessories__womens_fashion_jewellery__bridal_set",
-  ],
-  bangle: [
-    "womens_accessories__womens_fashion_jewellery__bangle_bracelet",
-    "womens_accessories__womens_fashion_jewellery__ring",
-    "womens_accessories__womens_fashion_jewellery__anklet",
-    "womens_accessories__womens_fashion_jewellery__kamarband",
-    "womens_accessories__womens_fashion_jewellery__hair_accessory",
-  ],
-  earring: [
-    "womens_accessories__womens_fashion_jewellery__earring",
-  ],
+  // ── Western wear (not scheduled; see SLOT_COUNTS) ───────────────────────────
+  coord: sub("Western Wear", "Coord Sets"),
 
-  // ── Bags ─────────────────────────────────────────────────────────────────────
-  handbag: [
-    "womens_accessories__womens_bags__handbag",
-    "womens_accessories__womens_bags__sling_bag",
-    "womens_accessories__womens_bags__tote_bag",
-  ],
+  // ── Bags (backpacks, wallets, luggage and "Other Bags" left out) ────────────
+  handbag: sub("Bags", "Handbags", "Sling Bags", "Tote Bags", "Potli Bags", "Clutches"),
 
-  // ── Watches (54 products in catalogue)
-  watch: [
-    "womens_accessories__womens_other_accessories__watch",
-  ],
+  // ── Footwear (shoes & sneakers left out) ────────────────────────────────────
+  slipper: sub("Footwear", "Slippers", "Heels"),
 
-  // ── Footwear/Slippers: women's heels (366) + slippers that may be mismapped.
-  // Gender filter in ranking.js drops anything with "men/boys/gents" in the name.
-  slipper: [
-    "womens_accessories__womens_footwear__heels",
-    "mens_accessories__mens_footwear__slippers",
-  ],
+  // ── Watches ─────────────────────────────────────────────────────────────────
+  watch: sub("Watches & Wearables", "Fashion Watches"),
 };
 
-// Human-readable label for each sub-category (used in WA message header)
-export const SUBCATEGORY_LABELS = {
-  // Ethnic
-  womens_clothing__womens_ethnic_wear__kurta_set:            "Kurta Sets",
-  womens_clothing__womens_ethnic_wear__kurti:                "Kurtis",
-  womens_clothing__womens_ethnic_wear__saree:                "Sarees",
-
-  // Western
-  womens_clothing__womens_western_wear__coord_set:           "Co-ord Sets",
-  womens_clothing__womens_western_wear__top:                 "Tops",
-  womens_clothing__womens_western_wear__dress:               "Dresses",
-  womens_clothing__womens_western_wear__gown:                "Gowns",
-  womens_clothing__womens_western_wear__palazzo:             "Palazzo Sets",
-  womens_clothing__womens_western_wear__shirt:               "Shirts",
-
-  // Jewellery
-  womens_accessories__womens_fashion_jewellery__bangle_bracelet: "Bangles & Bracelets",
-  womens_accessories__womens_fashion_jewellery__necklace_set:    "Necklace Sets",
-  womens_accessories__womens_fashion_jewellery__necklace:        "Necklaces",
-  womens_accessories__womens_fashion_jewellery__jewellery_set:   "Jewellery Sets",
-  womens_accessories__womens_fashion_jewellery__earring:         "Earrings",
-  womens_accessories__womens_fashion_jewellery__ring:            "Rings",
-  womens_accessories__womens_fashion_jewellery__anklet:          "Anklets",
-  womens_accessories__womens_fashion_jewellery__chain:           "Chains",
-  womens_accessories__womens_fashion_jewellery__mangalsutra:     "Mangalsutras",
-  womens_accessories__womens_fashion_jewellery__mangalsutra_set: "Mangalsutra Sets",
-  womens_accessories__womens_fashion_jewellery__pendant:         "Pendants",
-  womens_accessories__womens_fashion_jewellery__pendant_set:     "Pendant Sets",
-  womens_accessories__womens_fashion_jewellery__bridal_set:      "Bridal Sets",
-  womens_accessories__womens_fashion_jewellery__kamarband:       "Kamarbands",
-  womens_accessories__womens_fashion_jewellery__hair_accessory:  "Hair Accessories",
-
-  // Bags
-  womens_accessories__womens_bags__handbag:   "Handbags",
-  womens_accessories__womens_bags__sling_bag: "Sling Bags",
-  womens_accessories__womens_bags__tote_bag:  "Tote Bags",
-
-  // Watches & Footwear
-  womens_accessories__womens_other_accessories__watch: "Watches",
-  womens_accessories__womens_footwear__heels:          "Heels & Slippers",
-  mens_accessories__mens_footwear__slippers:           "Slippers",
-};
-
-// Slot-level labels — used when no sub-category match is found in SUBCATEGORY_LABELS
+// Header label when a post's products have no sub-category name
 export const SLOT_LABELS = {
   mangalsutra: "Mangalsutras",
   necklace:    "Necklaces",
@@ -116,6 +48,3 @@ export const SLOT_LABELS = {
   watch:       "Watches",
   slipper:     "Slippers",
 };
-
-// All product types that are active in the catalogue (quick lookup set)
-export const ALL_ACTIVE_TYPES = new Set(Object.values(CATEGORY_TYPES).flat());

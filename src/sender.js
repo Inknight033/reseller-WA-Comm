@@ -1,7 +1,7 @@
 import client from "./client/whatsapp.js";
 import { pickSlotProducts } from "./ranking.js";
 import { recordShared } from "./history.js";
-import { SUBCATEGORY_LABELS, SLOT_LABELS } from "./config/categories.js";
+import { SLOT_LABELS } from "./config/categories.js";
 import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
 
 // Hardcoded target JIDs (from /debug/groups)
@@ -54,7 +54,7 @@ const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣
 
 // ── Combined text message ─────────────────────────────────────────────────────
 function buildCombinedText(products, slot) {
-  const subCatLabel = SUBCATEGORY_LABELS[products[0]?.clean_product_type]
+  const subCatLabel = products[0]?.category_l2
     || SLOT_LABELS[slot.category]
     || slot.category;
   const festival = getActiveFestival(slot.category);
@@ -214,7 +214,7 @@ export async function sendSlot(slot) {
 
   recordShared(products, slot);
 
-  const label = products[0]?.category_l2 || SUBCATEGORY_LABELS[products[0]?.clean_product_type] || "?";
+  const label = products[0]?.category_l2 || "?";
   console.log(`✓ [${slotTag}] ${slot.category} | ${products.length} products | ${label}`);
   return { sent: true, count: products.length };
 }

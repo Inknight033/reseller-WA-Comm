@@ -34,6 +34,14 @@ export async function fetchCatalogueMeta() {
   return runCard(13784);
 }
 
+// Website category per product (Metabase question 17130, from
+// csv_upload.reseller_website_category_mapping). One row per product.
+// Columns: customer_product_short_id, category, sub_category
+export async function fetchWebsiteCategories() {
+  const id = parseInt(process.env.METABASE_CATEGORY_QUESTION_ID || "17130");
+  return runCard(id);
+}
+
 // Card 14565 — lifetime signals fallback
 export async function fetchProductSignals() {
   return runCard(14565);

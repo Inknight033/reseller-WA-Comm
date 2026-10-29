@@ -4,16 +4,6 @@ import { MIN_L30D_ORDERS, PRODUCTS_PER_SHARE, SLOT_COUNTS } from "./config/sched
 import { getRecentlyShared, getRecentlySharedTimes } from "./history.js";
 import { loadWeights, loadSubcategoryPerf } from "./learning.js";
 
-// Maps slot category names → category_l1 strings from product_labels.json.
-// Only set where L1 data adds filtering value; new specific-subcategory slots
-// are narrow enough via CATEGORY_TYPES alone and don't need an L1 guard.
-const CATEGORY_L1_MAP = {
-  kurti:    "Kurtas, Kurtis & Sets",
-  saree:    "Sarees",
-  coord:    "Western Wear",
-  handbag:  "Bags",
-};
-
 // Exclude products explicitly marketed to men/boys — catches mismapped types
 // and cross-gender products where the name makes it clear. Word-boundary match
 // so "women", "element", "female" are not caught.
@@ -42,12 +32,11 @@ function subcatBoost(subPerf, sc, catAvg) {
 // Products that belong in a slot category (before the "recently shared" filter)
 function categoryProducts(products, category) {
   const validTypes = new Set(CATEGORY_TYPES[category] || []);
-  const expectedL1 = CATEGORY_L1_MAP[category];
 
   return [...products.values()].filter((p) => {
     if (!validTypes.has(p.clean_product_type))                        return false;
-    // L1 guard: only applies for categories that have an L1 entry
-    if (expectedL1 && p.category_l1 && p.category_l1 !== expectedL1) return false;
+    // Some newly uploaded products have no name or price yet — never post those
+    if (!p.product_name?.trim() || !p.reseller_selling_price)        return false;
     if (p.orders_last_30d < MIN_L30D_ORDERS)                         return false;
     // Drop anything explicitly marketed to men/boys — catches mismapped types
     if (MALE_NAME_PATTERN.test(p.product_name))                       return false;

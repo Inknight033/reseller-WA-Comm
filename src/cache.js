@@ -1,7 +1,4 @@
-import { fetchPrimaryFeed, fetchCatalogueMeta } from "./metabase.js";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const PRODUCT_LABELS = require("./data/product_labels.json");
+import { fetchPrimaryFeed, fetchCatalogueMeta, fetchWebsiteCategories } from "./metabase.js";
 
 const REFRESH_MS = 26 * 60 * 60 * 1000; // 26h — refreshed on schedule, not on-demand
 
@@ -10,7 +7,12 @@ function toSlug(name) {
   return name.trim().replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
 }
 
-function buildMap(feed, meta) {
+function buildMap(feed, meta, categories) {
+  const catByProduct = new Map();
+  for (const row of categories) {
+    if (row.customer_product_short_id) catByProduct.set(row.customer_product_short_id.trim(), row);
+  }
+
   const metaByProduct = new Map();
   const sizesByProduct = new Map();
 
@@ -28,6 +30,7 @@ function buildMap(feed, meta) {
     const id = row.customer_product_short_id;
     if (!id || productMap.has(id)) continue;
     const m     = metaByProduct.get(id) || {};
+    const wc    = catByProduct.get(String(id).trim()) || {};
     const sizes = [...(sizesByProduct.get(id) || [])];
     productMap.set(id, {
       customer_product_short_id: id,
@@ -49,9 +52,11 @@ function buildMap(feed, meta) {
       website_product_link:      row.website_product_link,
       cheapest:                  row.cheapest,
       exclusive:                 row.exclusive,
-      clean_product_type:        m.clean_product_type || "",
-      category_l1:               (PRODUCT_LABELS[id]?.l1) || "",
-      category_l2:               (PRODUCT_LABELS[id]?.l2) || "",
+      // Website category / sub-category. clean_product_type is the
+      // "Category › Sub-category" key that CATEGORY_TYPES and ranking group by.
+      category_l1:               wc.category || "",
+      category_l2:               wc.sub_category || "",
+      clean_product_type:        wc.category && wc.sub_category ? `${wc.category} › ${wc.sub_category}` : "",
       orders_last_30d:          row.orders_last_30d          || 0, // all ShopDeck orders
       // New column added to card 14878 — reseller-channel orders only.
       // If the column name differs in Metabase, update the key on the right side.
@@ -73,8 +78,10 @@ let _inflight = null;
 
 async function refresh() {
   console.log("[cache] Fetching product data from Metabase…");
-  const [feed, meta] = await Promise.all([fetchPrimaryFeed(), fetchCatalogueMeta()]);
-  _cache = buildMap(feed, meta);
+  const [feed, meta, categories] = await Promise.all([
+    fetchPrimaryFeed(), fetchCatalogueMeta(), fetchWebsiteCategories(),
+  ]);
+  _cache = buildMap(feed, meta, categories);
   _fetchedAt = Date.now();
   console.log(`[cache] Loaded ${_cache.size} products`);
   return _cache;
