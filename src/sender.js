@@ -13,7 +13,7 @@ const TARGET_JIDS = [
 // ── Festival calendar ─────────────────────────────────────────────────────────
 // Header tag in the 10 days before a festival, for posts in these website categories
 const FESTIVALS = [
-  { name: "Diwali", emoji: "🪔", start: "2026-11-01", categories: ["Kurtas, Kurtis & Sets", "Sarees", "Jewellery", "Western Wear", "Bags", "Home & Living", "Lehenga, Gowns & Ethnic Dresses"] },
+  { name: "Diwali", emoji: "🪔", start: "2026-11-08", categories: ["Kurtas, Kurtis & Sets", "Sarees", "Jewellery", "Western Wear", "Bags", "Home & Living", "Lehenga, Gowns & Ethnic Dresses"] },
   { name: "Holi",   emoji: "🎨", start: "2027-03-14", categories: ["Kurtas, Kurtis & Sets", "Western Wear"] },
   { name: "Eid",    emoji: "🌙", start: "2027-03-30", categories: ["Kurtas, Kurtis & Sets", "Sarees"] },
 ];
