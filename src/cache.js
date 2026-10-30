@@ -52,8 +52,7 @@ function buildMap(feed, meta, categories) {
       website_product_link:      row.website_product_link,
       cheapest:                  row.cheapest,
       exclusive:                 row.exclusive,
-      // Website category / sub-category. clean_product_type is the
-      // "Category › Sub-category" key that CATEGORY_TYPES and ranking group by.
+      // Website category / sub-category (question 17130)
       category_l1:               wc.category || "",
       category_l2:               wc.sub_category || "",
       clean_product_type:        wc.category && wc.sub_category ? `${wc.category} › ${wc.sub_category}` : "",
@@ -61,6 +60,11 @@ function buildMap(feed, meta, categories) {
       // New column added to card 14878 — reseller-channel orders only.
       // If the column name differs in Metabase, update the key on the right side.
       reseller_orders_last_30d: row.reseller_orders_last_30d || 0,
+      // Group-post ranking: all orders (direct + reseller), then rating
+      orders_30d:               (row.orders_last_30d || 0) + (row.reseller_orders_last_30d || 0),
+      pq_score:                 wc.pq_score ?? null,       // avg stars, all channels (null = no reviews)
+      review_count:             wc.review_count || 0,
+      is_new_arrival:           !!wc.is_new_arrival,
       ppo_last_7d:              row.ppo_last_7d              || 0,
       shares_last_7d:           row.shares_last_7d           || 0,
       // Reseller margin: max they can earn per sale (website price - reseller price)

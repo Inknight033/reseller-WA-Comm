@@ -57,7 +57,7 @@ async function slotTick() {
       } else {
         s.status  = "pending";
         s.retried = true;
-        console.log(`[Scheduler] ${s.time} ${s.category} was interrupted — retrying once`);
+        console.log(`[Scheduler] ${s.time} ${s.label} was interrupted — retrying once`);
       }
       changed = true;
     }
@@ -66,7 +66,7 @@ async function slotTick() {
       if (s.status === "pending" && minutes - s.minutes > MAX_LATE_MINUTES) {
         s.status = "missed";
         changed = true;
-        console.log(`[Scheduler] ${s.time} ${s.category} missed (bot was not ready in time)`);
+        console.log(`[Scheduler] ${s.time} ${s.label} missed (bot was not ready in time)`);
       }
     }
 
@@ -74,7 +74,7 @@ async function slotTick() {
     const sinceLast = plan.last_sent_at ? Date.now() - new Date(plan.last_sent_at).getTime() : Infinity;
 
     if (next && sinceLast >= MIN_GAP_MINUTES * 60 * 1000) {
-      console.log(`[Scheduler] ${date} ${next.time} → ${next.category}`);
+      console.log(`[Scheduler] ${date} ${next.time} → ${next.label}`);
       // Mark before sending — if the process dies mid-send, the slot is never re-sent
       next.status = "sending";
       next.started_at = new Date().toISOString();
@@ -83,7 +83,7 @@ async function slotTick() {
         const result = await sendSlot({
           hour:     Math.floor(next.minutes / 60),
           minute:   next.minutes % 60,
-          category: next.category,
+          topic:    next.topic,
         });
         next.status   = result.sent ? "sent" : "skipped";
         next.products = result.count;

@@ -3,6 +3,7 @@ import { join } from "path";
 
 const DATA_DIR  = process.env.DATA_DIR || "data";
 const FILE      = join(DATA_DIR, "shared_history.json");
+const COLLECTIONS_FILE = join(DATA_DIR, "collection_history.json");
 const NO_REPEAT_DAYS = 15;
 
 function ensureDir() {
@@ -55,7 +56,7 @@ export function recordShared(products, slotMeta) {
     entries.push({
       product_id:   p.customer_product_short_id,
       product_name: p.product_name || "",
-      category:     slotMeta.category,
+      category:     slotMeta.topic,
       sub_category: p.clean_product_type,
       price:        p.reseller_selling_price || 0,
       margin:       p.margin || 0,
@@ -75,4 +76,20 @@ export function getSharedOnDate(dateStr) {
 
 export function getAllHistory() {
   return load();
+}
+
+// ── Collections ───────────────────────────────────────────────────────────────
+// short_id → last time (ISO) the collection was linked in a group post
+
+export function getCollectionLastShared() {
+  try { return JSON.parse(readFileSync(COLLECTIONS_FILE, "utf8")); }
+  catch { return {}; }
+}
+
+export function recordCollectionsShared(collections) {
+  ensureDir();
+  const last = getCollectionLastShared();
+  const now  = new Date().toISOString();
+  for (const c of collections) last[c.short_id] = now;
+  writeFileSync(COLLECTIONS_FILE, JSON.stringify(last, null, 2));
 }

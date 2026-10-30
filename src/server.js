@@ -2,9 +2,9 @@ import express from "express";
 import QRCode from "qrcode";
 import fs from "fs";
 import client from "./client/whatsapp.js";
-import { sendSlot } from "./sender.js";
-import { SLOT_COUNTS } from "./config/schedule.js";
-import { nowIST, getOrCreatePlan, buildPlan } from "./slot_planner.js";
+import { sendSlot, buildPost } from "./sender.js";
+import { getTopic, allTopics } from "./config/topics.js";
+import { nowIST, getOrCreatePlan, previewPlans } from "./slot_planner.js";
 import { getStockReport } from "./ranking.js";
 import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sender.js";
@@ -70,20 +70,20 @@ export function startQRServer() {
     res.json(summary);
   });
 
-  // Manual trigger — post one category to both groups right now
-  // Usage: /trigger?category=kurti
+  // Manual trigger — post one topic to both groups right now
+  // Usage: /trigger?topic=jewellery/bangles-and-bracelets  (no topic → lists them)
   // Doesn't change today's plan.
   app.get("/trigger", async (req, res) => {
     if (!client.isReady) return res.status(503).json({ error: "WhatsApp not connected" });
 
-    const { category } = req.query;
-    if (!category || !SLOT_COUNTS[category]) {
-      return res.status(400).json({ error: "Pass ?category=<one of the categories>", categories: Object.keys(SLOT_COUNTS) });
+    const { topic } = req.query;
+    if (!topic || !getTopic(topic)) {
+      return res.status(400).json({ error: "Pass ?topic=<one of the topics>", topics: allTopics().map((t) => t.key) });
     }
 
     const { minutes } = nowIST();
-    const slot = { hour: Math.floor(minutes / 60), minute: minutes % 60, category };
-    res.json({ message: `Firing: ${category}` });
+    const slot = { hour: Math.floor(minutes / 60), minute: minutes % 60, topic };
+    res.json({ message: `Firing: ${getTopic(topic).label}` });
     sendSlot(slot).catch((e) => console.error("[/trigger]", e));
   });
 
@@ -108,17 +108,32 @@ export function startQRServer() {
     res.json(getOrCreatePlan(nowIST().date));
   });
 
-  // Sample plans for the next few days — nothing is saved or sent
-  // Usage: /slots/preview?days=7
+  // Sample plans for the next few days, starting today — nothing is saved or sent
+  // Usage: /slots/preview?days=4
   app.get("/slots/preview", (req, res) => {
-    const days = Math.min(parseInt(req.query.days) || 7, 31);
-    const plans = Array.from({ length: days }, (_, i) =>
-      buildPlan(`sample-day-${i + 1}`).slots.map((s) => `${s.time} ${s.category}`)
-    );
-    res.json(plans);
+    const days = Math.min(parseInt(req.query.days) || 4, 31);
+    res.json(Object.fromEntries(previewPlans(nowIST().date, days).map((p) =>
+      [p.date, p.slots.map((s) => `${s.time} ${s.label}${s.tier === "discovery" ? " (discovery)" : ""}`)]
+    )));
   });
 
-  // How many fresh products each category has left, and how many days that covers
+  // What a topic's next post would look like — nothing is sent
+  // Usage: /post/preview?topic=jewellery/bangles-and-bracelets
+  app.get("/post/preview", async (req, res) => {
+    const { topic } = req.query;
+    if (!topic || !getTopic(topic)) {
+      return res.status(400).json({ error: "Pass ?topic=<one of the topics>", topics: allTopics().map((t) => t.key) });
+    }
+    try {
+      const built = await buildPost(topic);
+      if (!built) return res.status(404).json({ error: "No eligible products" });
+      res.type("text/plain").send(built.text);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // How many fresh products each topic has left, and how many days that covers
   app.get("/stock", async (_req, res) => {
     try {
       res.json(await getStockReport());

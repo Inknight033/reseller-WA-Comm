@@ -34,9 +34,11 @@ export async function fetchCatalogueMeta() {
   return runCard(13784);
 }
 
-// Website category per product (Metabase question 17130, from
-// csv_upload.reseller_website_category_mapping). One row per product.
-// Columns: customer_product_short_id, category, sub_category
+// Website category, rating and new-arrival flag per product (Metabase question
+// 17130, from csv_upload.reseller_website_category_mapping, nushop.product_reviews
+// and question 17134). One row per product.
+// Columns: customer_product_short_id, category, sub_category, pq_score,
+//          review_count, is_new_arrival
 export async function fetchWebsiteCategories() {
   const id = parseInt(process.env.METABASE_CATEGORY_QUESTION_ID || "17130");
   return runCard(id);

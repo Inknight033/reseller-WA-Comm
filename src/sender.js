@@ -1,7 +1,7 @@
 import client from "./client/whatsapp.js";
-import { pickSlotProducts } from "./ranking.js";
-import { recordShared } from "./history.js";
-import { SLOT_LABELS } from "./config/categories.js";
+import { pickPost, byRank } from "./ranking.js";
+import { recordShared, recordCollectionsShared } from "./history.js";
+import { getTopic } from "./config/topics.js";
 import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
 
 // Hardcoded target JIDs (from /debug/groups)
@@ -11,21 +11,18 @@ const TARGET_JIDS = [
 ];
 
 // ── Festival calendar ─────────────────────────────────────────────────────────
-// Show tag when within 28 days before the festival start
+// Header tag in the 10 days before a festival, for posts in these website categories
 const FESTIVALS = [
-  { name: "Navratri",  emoji: "🪷", start: "2026-10-02", categories: ["kurti","saree","jewellery"] },
-  { name: "Dussehra",  emoji: "🏹", start: "2026-10-12", categories: ["kurti","saree"] },
-  { name: "Diwali",    emoji: "🪔", start: "2026-11-01", categories: ["kurti","saree","jewellery","western","bags"] },
-  { name: "Holi",      emoji: "🎨", start: "2027-03-14", categories: ["kurti","western"] },
-  { name: "Eid",       emoji: "🌙", start: "2027-03-30", categories: ["kurti","saree"] },
+  { name: "Diwali", emoji: "🪔", start: "2026-11-01", categories: ["Kurtas, Kurtis & Sets", "Sarees", "Jewellery", "Western Wear", "Bags", "Home & Living", "Lehenga, Gowns & Ethnic Dresses"] },
+  { name: "Holi",   emoji: "🎨", start: "2027-03-14", categories: ["Kurtas, Kurtis & Sets", "Western Wear"] },
+  { name: "Eid",    emoji: "🌙", start: "2027-03-30", categories: ["Kurtas, Kurtis & Sets", "Sarees"] },
 ];
 
 function getActiveFestival(category) {
   const today = new Date();
   for (const f of FESTIVALS) {
     if (!f.categories.includes(category)) continue;
-    const start = new Date(f.start);
-    const daysAway = (start - today) / 86400000;
+    const daysAway = (new Date(f.start) - today) / 86400000;
     if (daysAway >= 0 && daysAway <= 10) return f;
   }
   return null;
@@ -52,29 +49,41 @@ function dynamicLink(url) {
 
 const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
 
-// ── Combined text message ─────────────────────────────────────────────────────
-function buildCombinedText(products, slot) {
-  const subCatLabel = products[0]?.category_l2
-    || SLOT_LABELS[slot.category]
-    || slot.category;
-  const festival = getActiveFestival(slot.category);
+const THEME_EMOJI = {
+  "Trending":     "🔥",
+  "Under ₹500":   "💸",
+  "Premium":      "💎",
+  "Top Rated":    "⭐",
+  "New Arrivals": "🆕",
+};
 
-  // Header
-  const occasion = festival ? `${festival.name} Collection ${festival.emoji}` : "Today's Bestsellers";
-  const lines    = [`🛍️ *${subCatLabel}* — ${occasion}`, ""];
+// ── Combined text message ─────────────────────────────────────────────────────
+// Collections first (the main call to action), then the products.
+function buildCombinedText(topic, collections, products) {
+  const festival = getActiveFestival(topic.category);
+  const lines = [
+    `🛍️ *${topic.label}*${festival ? ` — ${festival.name} Picks ${festival.emoji}` : ""}`,
+    "",
+    "👇 *Explore the full collections*",
+  ];
+  for (const c of collections) {
+    lines.push(`${THEME_EMOJI[c.theme] || "✨"} *${c.name}* — ${c.products.toLocaleString("en-IN")} designs`);
+    lines.push(`🔗 ${dynamicLink(c.link)}`);
+  }
+  lines.push("", "─────────────", "");
 
   // Per-product block
   products.forEach((p, i) => {
     lines.push(`${NUMBERS[i] || `${i + 1}.`} *${p.product_name}*`);
 
     // Strikethrough website price → reseller price
-    const sellerPrice = p.reseller_selling_price || 0;
-    lines.push(`~${fmt(p.website_price)}~ *${fmt(sellerPrice)}*`);
+    lines.push(`~${fmt(p.website_price)}~ *${fmt(p.reseller_selling_price)}*`);
 
-    // Orders + margin on one line
-    const ordersLabel = fmtOrders(p.orders_last_30d);
+    // Orders · rating · margin on one line
+    const ordersLabel = fmtOrders(p.orders_30d);
+    const ratingLabel = p.pq_score >= 3.5 ? `⭐ ${p.pq_score.toFixed(1)}` : "";
     const marginLabel = p.margin && p.margin >= 50 ? `💰 ${fmt(p.margin)} margin` : "";
-    const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", marginLabel].filter(Boolean).join(" · ");
+    const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", ratingLabel, marginLabel].filter(Boolean).join(" · ");
     if (statsLine) lines.push(statsLine);
 
     lines.push(`🔗 ${dynamicLink(p.qrate_url)}`);
@@ -133,48 +142,68 @@ function withTimeout(promise, ms, what) {
 const SEND_TIMEOUT_MS = 60 * 1000;
 
 // ── Main send ─────────────────────────────────────────────────────────────────
+
+// Products for the post: half from each collection's best candidates, skipping
+// any whose photo didn't load, topped up from the topic's best. Shown best first.
+function chooseProducts(post, images) {
+  const chosen = new Set();
+  const take = (list, n) => {
+    for (const p of list) {
+      if (n <= 0) break;
+      const id = p.customer_product_short_id;
+      if (chosen.has(id) || !images.get(id)) continue;
+      chosen.add(id);
+      n--;
+    }
+  };
+  const per = Math.ceil(PRODUCTS_PER_SHARE / Math.max(post.collections.length, 1));
+  for (const c of post.collections) take(c.candidates, Math.min(per, PRODUCTS_PER_SHARE - chosen.size));
+  take(post.others, PRODUCTS_PER_SHARE - chosen.size);
+
+  const byId = new Map([...post.collections.flatMap((c) => c.candidates), ...post.others]
+    .map((p) => [p.customer_product_short_id, p]));
+  return [...chosen].map((id) => byId.get(id)).sort(byRank);
+}
+
+// Builds the post for a topic without sending it: { topic, collections, products, buffers, text }
+export async function buildPost(topicKey) {
+  const topic = getTopic(topicKey);
+  if (!topic) throw new Error(`Unknown topic: ${topicKey}`);
+
+  const post = await pickPost(topic);
+  if (!post) return null;
+
+  // Fetch every candidate's photo up front — all retries happen before any WA send
+  const all = new Map([...post.collections.flatMap((c) => c.candidates), ...post.others]
+    .map((p) => [p.customer_product_short_id, p]));
+  const images = new Map(await Promise.all(
+    [...all.values()].map(async (p) => [p.customer_product_short_id, await fetchImage(p.img_link)])
+  ));
+
+  const products = chooseProducts(post, images);
+  if (!products.length) return null;
+  const collections = post.collections.map(({ candidates, ...c }) => c);
+
+  return {
+    topic,
+    collections,
+    products,
+    buffers: products.map((p) => images.get(p.customer_product_short_id)),
+    text:    buildCombinedText(topic, collections, products),
+  };
+}
+
 // Returns { sent, count } so the scheduler can record what happened to the slot
 export async function sendSlot(slot) {
   const slotTag = `${slot.hour}:${String(slot.minute || 0).padStart(2, "0")}`;
 
-  // Fetch a 5× pool so we can replace products whose images fail
-  const candidates = await pickSlotProducts(slot, PRODUCTS_PER_SHARE * 5);
-
-  if (!candidates.length) {
-    console.log(`[Slot ${slotTag}] No eligible ${slot.category} products — skipping`);
+  const built = await buildPost(slot.topic);
+  if (!built) {
+    console.log(`[Slot ${slotTag}] No eligible products for ${slot.topic} — skipping`);
     return { sent: false, count: 0 };
   }
-
+  const { products, buffers, text, collections } = built;
   const targetJids = TARGET_JIDS;
-
-  // Fetch images for all candidates in parallel — BEFORE any WA sends
-  const fetched = await Promise.all(
-    candidates.map(async (p) => ({
-      product: p,
-      buffer:  p.img_link ? await fetchImage(p.img_link) : null,
-    }))
-  );
-
-  // Prefer products that have a valid image; fill remainder from those without
-  const withImage    = fetched.filter(x => x.buffer);
-  const withoutImage = fetched.filter(x => !x.buffer);
-
-  const selected = [
-    ...withImage.slice(0, PRODUCTS_PER_SHARE),
-    ...withoutImage.slice(0, Math.max(0, PRODUCTS_PER_SHARE - withImage.length)),
-  ].slice(0, PRODUCTS_PER_SHARE);
-
-  if (!selected.length) {
-    console.log(`[Slot ${slotTag}] No products after selection — skipping`);
-    return { sent: false, count: 0 };
-  }
-
-  const products = selected.map(x => x.product);
-  const buffers  = selected.map(x => x.buffer);
-
-  console.log(`[Slot ${slotTag}] candidates: ${candidates.length} | with image: ${withImage.length} | selected: ${products.length}`);
-
-  const text = buildCombinedText(products, slot);
 
   // Send to each target — one group failing (e.g. bot not a member) doesn't stop the others
   let delivered = 0;
@@ -213,8 +242,8 @@ export async function sendSlot(slot) {
   if (!delivered) throw new Error("Post failed for every group");
 
   recordShared(products, slot);
+  recordCollectionsShared(collections);
 
-  const label = products[0]?.category_l2 || "?";
-  console.log(`✓ [${slotTag}] ${slot.category} | ${products.length} products | ${label}`);
+  console.log(`✓ [${slotTag}] ${slot.topic} | ${products.length} products | ${collections.map((c) => c.name).join(" + ")}`);
   return { sent: true, count: products.length };
 }

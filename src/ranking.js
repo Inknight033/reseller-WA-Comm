@@ -1,151 +1,125 @@
 import { getProductMap } from "./cache.js";
-import { CATEGORY_TYPES } from "./config/categories.js";
-import { MIN_L30D_ORDERS, PRODUCTS_PER_SHARE, SLOT_COUNTS } from "./config/schedule.js";
-import { getRecentlyShared, getRecentlySharedTimes } from "./history.js";
-import { loadWeights, loadSubcategoryPerf } from "./learning.js";
+import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
+import { CORE_TOPICS, DISCOVERY_TOPICS, collectionsForTopic, slug } from "./config/topics.js";
+import { getRecentlyShared, getRecentlySharedTimes, getCollectionLastShared } from "./history.js";
 
 // Exclude products explicitly marketed to men/boys — catches mismapped types
 // and cross-gender products where the name makes it clear. Word-boundary match
-// so "women", "element", "female" are not caught.
+// so "women", "element", "female" are not caught. Not applied to men's categories.
 const MALE_NAME_PATTERN = /\b(men|mens|men's|boys|boy's|gents|male|unisex\s+men)\b/i;
 
-function normalise(arr) {
-  const max = Math.max(...arr, 1);
-  return arr.map((v) => v / max);
-}
+// Which products belong in a collection of each theme (same rules the
+// collections were built with)
+const THEME_RULES = {
+  "Trending":     (p) => p.orders_30d >= 1,
+  "Under ₹500":   (p) => p.reseller_selling_price < 500,
+  "Premium":      (p) => p.reseller_selling_price > 750,
+  "Top Rated":    (p) => p.pq_score >= 3.9,
+  "New Arrivals": (p) => p.is_new_arrival,
+};
 
-// Average EMA orders across known sub-categories within this slot's valid types
-function categoryAvgOrders(subPerf, validTypes) {
-  const entries = Object.entries(subPerf).filter(([sc]) => validTypes.has(sc));
-  if (!entries.length) return 1;
-  return entries.reduce((s, [, e]) => s + e.ema_orders, 0) / entries.length;
-}
+// Products rated below this (any number of reviews) are never posted; unrated is fine
+const MIN_RATING = 3.0;
 
-// Historical performance multiplier for a sub-category. Returns 1.0 if not enough data.
-function subcatBoost(subPerf, sc, catAvg) {
-  const entry = subPerf[sc];
-  if (!entry || entry.samples < 3) return 1.0;
-  const ratio = entry.ema_orders / Math.max(catAvg, 0.01);
-  return Math.max(0.7, Math.min(1.5, ratio)); // clamp so one great day doesn't dominate
-}
+// Most orders in 30 days first, then higher rating (unrated last), then more reviews
+const byRank = (a, b) =>
+  b.orders_30d - a.orders_30d ||
+  (b.pq_score ?? -1) - (a.pq_score ?? -1) ||
+  b.review_count - a.review_count;
 
-// Products that belong in a slot category (before the "recently shared" filter)
-function categoryProducts(products, category) {
-  const validTypes = new Set(CATEGORY_TYPES[category] || []);
-
+// Products in a topic (before the "recently shared" filter)
+function topicProducts(products, topic) {
+  const cat = slug(topic.category), sub = slug(topic.sub_category);
+  const mensCategory = cat.startsWith("men-s");
   return [...products.values()].filter((p) => {
-    if (!validTypes.has(p.clean_product_type))                        return false;
+    if (slug(p.category_l1) !== cat)                                   return false;
+    if (topic.sub_category && slug(p.category_l2) !== sub)            return false;
     // Some newly uploaded products have no name or price yet — never post those
     if (!p.product_name?.trim() || !p.reseller_selling_price)        return false;
-    if (p.orders_last_30d < MIN_L30D_ORDERS)                         return false;
-    // Drop anything explicitly marketed to men/boys — catches mismapped types
-    if (MALE_NAME_PATTERN.test(p.product_name))                       return false;
+    if (!mensCategory && MALE_NAME_PATTERN.test(p.product_name))      return false;
+    // Ranking is orders first, so keep badly rated products out entirely
+    if (p.pq_score !== null && p.pq_score < MIN_RATING)                return false;
     return true;
   });
 }
 
-export async function getRankedForSlot({ category }) {
-  const weights   = loadWeights();
+// Candidates for a topic's post, best first. Products shared in the last 15 days
+// are left out; if fewer than a few posts' worth are left, the ones shared
+// longest ago are added at the end.
+function rankedCandidates(products, topic) {
   const recentIds = getRecentlyShared();
-  const products  = await getProductMap();
+  const all   = topicProducts(products, topic);
+  const fresh = all.filter((p) => !recentIds.has(p.customer_product_short_id)).sort(byRank);
+  const want  = PRODUCTS_PER_SHARE * 3;
+  if (fresh.length >= want) return fresh;
 
-  const inCategory = categoryProducts(products, category);
-  const candidates = inCategory.filter((p) => !recentIds.has(p.customer_product_short_id));
-
-  // Running low on fresh products → top up with the ones shared longest ago
-  const reused = candidates.length < REUSE_POOL ? oldestShared(inCategory, REUSE_POOL - candidates.length) : [];
-
-  if (!candidates.length) return reused;
-
-  // Signals — all normalised 0→1
-  // Priority: 40% reseller L30d orders, 30% overall L30d orders, 15% L7d shares, 15% margin
-  const normResellerOrders = normalise(candidates.map((p) => p.reseller_orders_last_30d || 0));
-  const normOrders         = normalise(candidates.map((p) => p.orders_last_30d));
-  const normShares         = normalise(candidates.map((p) => p.shares_last_7d));
-  const normMargin         = normalise(candidates.map((p) => p.margin || 0));
-
-  const scored = candidates.map((p, i) => ({
-    ...p,
-    _score:
-      (weights.reseller_orders_l30d || 0.40) * normResellerOrders[i] +
-      (weights.l30d_orders          || 0.30) * normOrders[i]         +
-      (weights.l7d_shares           || 0.15) * normShares[i]         +
-      (weights.margin               || 0.15) * normMargin[i],
-  }));
-
-  scored.sort((a, b) => b._score - a._score);
-  return [...scored, ...reused];
-}
-
-// Enough to fill a post even if a few images fail to load
-const REUSE_POOL = PRODUCTS_PER_SHARE * 2;
-
-// Recently shared products in this category, oldest share first. Scores are tiny
-// so they always rank below fresh products and the oldest comes first.
-function oldestShared(inCategory, count) {
   const times = getRecentlySharedTimes();
-  const old = inCategory
+  const reused = all
     .filter((p) => times.has(p.customer_product_short_id))
     .sort((a, b) => times.get(a.customer_product_short_id) - times.get(b.customer_product_short_id))
-    .slice(0, count);
-  if (old.length) console.log(`[Ranking] Low on fresh products — reusing ${old.length} shared longest ago`);
-  return old.map((p, i) => ({ ...p, _score: 0.001 * (1 - i / old.length), _reused: true }));
+    .slice(0, want - fresh.length)
+    .map((p) => ({ ...p, _reused: true }));
+  if (reused.length) console.log(`[Ranking] ${topic.label}: low on fresh products — reusing ${reused.length} shared longest ago`);
+  return [...fresh, ...reused];
 }
 
-// Pick products for a slot, grouped by same sub-category.
-// poolSize controls how many candidates to return from the best group —
-// caller uses a larger pool so it can replace products whose images fail.
-export async function pickSlotProducts(slot, poolSize = PRODUCTS_PER_SHARE) {
-  const n      = PRODUCTS_PER_SHARE;
-  const ranked = await getRankedForSlot(slot);
+// Two collections for the post, rotated: the one linked longest ago (never = first)
+// goes first; the second is the next longest-ago with a different theme, so a post
+// never links e.g. "Trending Rings" and "Trending Jewellery" together. A collection
+// is only used if at least 2 of the topic's candidates fit it.
+function pickCollections(topic, candidates) {
+  const lastShared = getCollectionLastShared();
+  const usable = collectionsForTopic(topic)
+    .map((c) => ({ ...c, fits: candidates.filter(THEME_RULES[c.theme] || (() => false)) }))
+    .filter((c) => c.fits.length >= 2)
+    .map((c) => ({ c, last: lastShared[c.short_id] || "", tie: Math.random() }))
+    .sort((a, b) => a.last.localeCompare(b.last) || a.tie - b.tie)
+    .map((x) => x.c);
 
-  if (!ranked.length) return [];
-
-  const subPerf    = loadSubcategoryPerf();
-  const validTypes = new Set(CATEGORY_TYPES[slot.category] || []);
-  const catAvg     = categoryAvgOrders(subPerf, validTypes);
-
-  // Group by sub-category
-  const groups = new Map();
-  for (const p of ranked) {
-    const sc = p.clean_product_type;
-    if (!groups.has(sc)) groups.set(sc, []);
-    groups.get(sc).push(p);
-  }
-
-  // Best group: sum of top-N product scores × historical performance boost
-  let bestKey      = null;
-  let bestEffScore = -Infinity;
-
-  for (const [sc, group] of groups) {
-    const rawScore = group.slice(0, n).reduce((s, p) => s + p._score, 0);
-    const boost    = subcatBoost(subPerf, sc, catAvg);
-    const effScore = rawScore * boost;
-    if (effScore > bestEffScore) { bestEffScore = effScore; bestKey = sc; }
-  }
-
-  const best = groups.get(bestKey) || [];
-  if (!best.length) return [];
-  return best.slice(0, poolSize);
+  const first = usable[0];
+  if (!first) return [];
+  const second = usable.find((c) => c !== first && c.theme !== first.theme)
+              || usable.find((c) => c !== first);
+  return second ? [first, second] : [first];
 }
 
-// Per-category stock: how many products exist, how many are fresh (not shared
-// in the no-repeat window), and roughly how many days of posts that covers.
+// Everything a post needs: the topic's two collections and, for each, its best
+// candidates. The sender takes PRODUCTS_PER_SHARE / 2 from each (skipping any
+// whose photo fails) and tops up from `others`.
+export async function pickPost(topic) {
+  const products   = await getProductMap();
+  const candidates = rankedCandidates(products, topic);
+  if (!candidates.length) return null;
+
+  const collections = pickCollections(topic, candidates);
+  const pool = PRODUCTS_PER_SHARE * 2;
+  return {
+    collections: collections.map(({ fits, ...c }) => ({ ...c, candidates: fits.slice(0, pool) })),
+    others:      candidates.slice(0, pool),
+  };
+}
+
+export { byRank };
+
+// Per-topic stock: how many products exist, how many are fresh (not shared in
+// the no-repeat window), and roughly how many days of posts that covers.
 export async function getStockReport() {
   const recentIds = getRecentlyShared();
   const products  = await getProductMap();
 
-  return Object.entries(SLOT_COUNTS).map(([category, postsPerDay]) => {
-    const all      = categoryProducts(products, category);
-    const fresh    = all.filter((p) => !recentIds.has(p.customer_product_short_id)).length;
-    const perDay   = postsPerDay * PRODUCTS_PER_SHARE;
+  return [...CORE_TOPICS, ...DISCOVERY_TOPICS].map((topic) => {
+    const all   = topicProducts(products, topic);
+    const fresh = all.filter((p) => !recentIds.has(p.customer_product_short_id)).length;
+    const perDay = topic.tier === "core" ? (topic.per2days / 2) * PRODUCTS_PER_SHARE : null;
     return {
-      category,
-      posts_per_day:    postsPerDay,
-      products_per_day: perDay,
+      topic:            topic.key,
+      label:            topic.label,
+      tier:             topic.tier,
+      posts_per_2_days: topic.tier === "core" ? topic.per2days : "rotating",
       total_products:   all.length,
+      with_orders:      all.filter((p) => p.orders_30d >= 1).length,
       fresh_products:   fresh,
-      days_of_stock:    Math.floor(fresh / perDay),
+      days_of_stock:    perDay ? Math.floor(fresh / perDay) : null,
     };
   });
 }
