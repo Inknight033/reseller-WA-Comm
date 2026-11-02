@@ -75,9 +75,8 @@ function buildCombinedText(topic, collections, products) {
 
     // Orders · rating · margin on one line
     const ordersLabel = fmtOrders(p.orders_30d);
-    const ratingLabel = p.pq_score >= 3.5 ? `⭐ ${p.pq_score.toFixed(1)}` : "";
     const marginLabel = p.margin && p.margin >= 50 ? `💰 ${fmt(p.margin)} margin` : "";
-    const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", ratingLabel, marginLabel].filter(Boolean).join(" · ");
+    const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", marginLabel].filter(Boolean).join(" · ");
     if (statsLine) lines.push(statsLine);
 
     lines.push(`🔗 ${p.qrate_url}`);
