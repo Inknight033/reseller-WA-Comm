@@ -41,6 +41,10 @@ function fmtOrders(n) {
   return `${n}+`;
 }
 
+// UTM on every link, so app sessions from community posts can be attributed
+const UTM = "utm_source=whatsapp&utm_medium=community&utm_campaign=daily_product_sharing";
+const withUtm = (url) => `${url}${url.includes("?") ? "&" : "?"}${UTM}`;
+
 const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
 
 const THEME_EMOJI = {
@@ -62,7 +66,7 @@ function buildCombinedText(topic, collections, products) {
   ];
   for (const c of collections) {
     lines.push(`${THEME_EMOJI[c.theme] || "✨"} *${c.name}* — ${c.products.toLocaleString("en-IN")} designs`);
-    lines.push(`🔗 ${c.link}`);
+    lines.push(`🔗 ${withUtm(c.link)}`);
   }
   lines.push("", "─────────────", "");
 
@@ -73,13 +77,13 @@ function buildCombinedText(topic, collections, products) {
     // Strikethrough website price → reseller price
     lines.push(`~${fmt(p.website_price)}~ *${fmt(p.reseller_selling_price)}*`);
 
-    // Orders · rating · margin on one line
+    // Orders · margin on one line
     const ordersLabel = fmtOrders(p.orders_30d);
     const marginLabel = p.margin && p.margin >= 50 ? `💰 ${fmt(p.margin)} margin` : "";
     const statsLine   = [ordersLabel ? `📦 ${ordersLabel} orders` : "", marginLabel].filter(Boolean).join(" · ");
     if (statsLine) lines.push(statsLine);
 
-    lines.push(`🔗 ${p.qrate_url}`);
+    lines.push(`🔗 ${withUtm(p.qrate_url)}`);
     lines.push("");
   });
 
@@ -87,7 +91,7 @@ function buildCombinedText(topic, collections, products) {
   lines.push("✅ No Shipping or Return charges · COD available");
   lines.push("🏆 Quality Guaranteed by Us — otherwise no questions asked return");
   lines.push("");
-  lines.push(`🛒 Explore all categories: https://qrate.shopdeck.com/browse`);
+  lines.push(`🛒 Explore all categories: ${withUtm("https://qrate.shopdeck.com/browse")}`);
   lines.push("📩 DM me for any help or specific product requests — I'll find and share!");
 
   return lines.join("\n");
