@@ -25,6 +25,12 @@ def has_ai_tag(path):
     return b"c2pa" in data.lower() or b"trainedAlgorithmicMedia" in data
 
 
+def is_video(path):
+    # Some product "photos" are really MP4 videos
+    with open(path, "rb") as f:
+        return f.read(12)[4:8] == b"ftyp"
+
+
 def shrink(src):
     dst = src.replace(".jpg", "s.jpg")
     subprocess.run(["sips", "-s", "format", "jpeg", "-Z", "1400", "-s", "formatOptions", "80", src, "--out", dst],
@@ -36,14 +42,16 @@ def fit(paths):
     """Return paths to upload, shrinking until the total fits."""
     files = list(paths)
     total = lambda: sum(os.path.getsize(p) for p in files)
+    tag_lost = False
     # Biggest untagged photos first, then tagged ones only if still too big
     for tagged in (False, True):
         for i in sorted(range(len(files)), key=lambda i: -os.path.getsize(files[i])):
             if total() <= LIMIT:
-                return files, tagged
-            if has_ai_tag(files[i]) == tagged:
+                return files, tag_lost
+            if not is_video(files[i]) and has_ai_tag(files[i]) == tagged:
                 files[i] = shrink(files[i])
-    return files, True
+                tag_lost = tag_lost or tagged
+    return files, tag_lost
 
 
 def main(date, slot, out):
@@ -68,6 +76,9 @@ def main(date, slot, out):
             for n, url in enumerate(post["photos"], 1):
                 p = os.path.join(out, f"{g}_{n}.jpg")
                 urllib.request.urlretrieve(url, p)
+                if is_video(p):
+                    os.replace(p, p[:-4] + ".mp4")
+                    p = p[:-4] + ".mp4"
                 photos.append(p)
             files, ai_lost = fit(photos)
         manifest.append({
