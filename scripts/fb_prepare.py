@@ -12,11 +12,24 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 
 BOT = "https://reseller-wa-comm-production-a4a7.up.railway.app"
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIMIT = 9_500_000
+
+
+def download(url, path, tries=3):
+    for n in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, open(path, "wb") as f:
+                shutil.copyfileobj(r, f)
+            return
+        except Exception:
+            if n == tries - 1:
+                raise
+            time.sleep(5)
 
 
 def has_ai_tag(path):
@@ -75,7 +88,7 @@ def main(date, slot, out):
             photos = []
             for n, url in enumerate(post["photos"], 1):
                 p = os.path.join(out, f"{g}_{n}.jpg")
-                urllib.request.urlretrieve(url, p)
+                download(url, p)
                 if is_video(p):
                     os.replace(p, p[:-4] + ".mp4")
                     p = p[:-4] + ".mp4"
