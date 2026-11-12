@@ -45,10 +45,11 @@ function topicProducts(products, topic) {
 
 // Candidates for a topic's post, best first. Products shared in the last 15 days
 // are left out; if fewer than a few posts' worth are left, the ones shared
-// longest ago are added at the end.
-function rankedCandidates(products, topic) {
+// longest ago are added at the end. `exclude` (product ids) are never used —
+// Facebook posts pass the products a group saw recently.
+function rankedCandidates(products, topic, exclude = new Set()) {
   const recentIds = getRecentlyShared();
-  const all   = topicProducts(products, topic);
+  const all   = topicProducts(products, topic).filter((p) => !exclude.has(p.customer_product_short_id));
   const fresh = all.filter((p) => !recentIds.has(p.customer_product_short_id)).sort(byRank);
   const want  = PRODUCTS_PER_SHARE * 3;
   if (fresh.length >= want) return fresh;
@@ -86,9 +87,9 @@ function pickCollections(topic, candidates) {
 // Everything a post needs: the topic's two collections and, for each, its best
 // candidates. The sender takes PRODUCTS_PER_SHARE / 2 from each (skipping any
 // whose photo fails) and tops up from `others`.
-export async function pickPost(topic) {
+export async function pickPost(topic, exclude) {
   const products   = await getProductMap();
-  const candidates = rankedCandidates(products, topic);
+  const candidates = rankedCandidates(products, topic, exclude);
   if (!candidates.length) return null;
 
   const collections = pickCollections(topic, candidates);

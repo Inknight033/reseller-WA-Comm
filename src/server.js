@@ -12,6 +12,7 @@ import { sendWelcomeSample } from "./community.js";
 import { SAMPLE_PHONES } from "./test_mode.js";
 import { registerFbLinks, clickSummary, fbTarget } from "./fb_links.js";
 import { introText, topicPost, checkGroup } from "./fb_posts.js";
+import { windowsFor, getSlot, loadSlot } from "./fb_planner.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -253,6 +254,40 @@ export function startQRServer() {
     } catch (e) {
       res.status(400).json({ error: e.message });
     }
+  });
+
+  // Facebook day plan: /fb/plan?date=2026-11-13 lists the windows and, for
+  // windows already built, each group's time and topic
+  app.get("/fb/plan", (req, res) => {
+    const date = req.query.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return res.status(400).json({ error: "date=YYYY-MM-DD required" });
+    res.json(windowsFor(date).map((w) => {
+      const plan = loadSlot(date, w.slot);
+      return { ...w, built: !!plan, posts: plan?.posts.map(({ g, group, time, topic }) => ({ g, group, time, topic })) };
+    }));
+  });
+
+  // One window's posts, built on first request: /fb/plan/slot?date=2026-11-13&slot=p1
+  app.get("/fb/plan/slot", async (req, res) => {
+    try {
+      res.json(await getSlot(req.query.date, req.query.slot));
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // Record posts made outside the planner (e.g. by hand) so later plans avoid
+  // their topics and products. Body: { date, slot, posts: [{ g, topic, products }] }
+  app.post("/fb/plan/import", express.json({ limit: "1mb" }), (req, res) => {
+    const { date, slot, posts } = req.body || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || !/^[a-z0-9]+$/.test(slot || "") || !Array.isArray(posts)) {
+      return res.status(400).json({ error: "date, slot and posts required" });
+    }
+    if (loadSlot(date, slot)) return res.status(409).json({ error: "already exists" });
+    const dir = `${process.env.DATA_DIR || "data"}/fb_plans`;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(`${dir}/${date}_${slot}.json`, JSON.stringify({ date, slot, kind: "imported", posts }, null, 2));
+    res.json({ ok: true, posts: posts.length });
   });
 
   // Where a short link goes: /fb/link?g=f1&l=jw

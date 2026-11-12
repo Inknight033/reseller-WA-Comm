@@ -163,11 +163,11 @@ function chooseProducts(post, images) {
 }
 
 // Builds the post for a topic without sending it: { topic, collections, products, buffers, text }
-export async function buildPost(topicKey) {
+export async function buildPost(topicKey, exclude) {
   const topic = getTopic(topicKey);
   if (!topic) throw new Error(`Unknown topic: ${topicKey}`);
 
-  const post = await pickPost(topic);
+  const post = await pickPost(topic, exclude);
   if (!post) return null;
 
   // Fetch every candidate's photo up front — all retries happen before any WA send

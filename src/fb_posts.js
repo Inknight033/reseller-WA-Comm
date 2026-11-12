@@ -57,14 +57,14 @@ export function introText(code) {
 }
 
 // Topic post for one group: { text, photos (image URLs, in list order), products }
-export async function topicPost(code, topicKey) {
-  const post = await buildPost(topicKey);
+export async function topicPost(code, topicKey, exclude) {
+  const post = await buildPost(topicKey, exclude);
   if (!post) return null;
   const { topic, collections, products } = post;
   const s = (p) => short(code, p);
 
   const lines = [
-    `${CATEGORY_EMOJI[slug(topic.category)] || "🛍️"} ${topic.label} — today's top picks for resellers on QRate`,
+    `${CATEGORY_EMOJI[slug(topic.category)] || "🛍️"} ${topic.label.replace(/ General$/, "")} — today's top picks for resellers on QRate`,
     "",
     BRIEF,
     "",
