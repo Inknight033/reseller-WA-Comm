@@ -29,12 +29,12 @@ function getActiveFestival(category) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmt(n) {
+export function fmt(n) {
   if (!n) return "";
   return `₹${Number(n).toLocaleString("en-IN")}`;
 }
 
-function fmtOrders(n) {
+export function fmtOrders(n) {
   if (!n || n < 10) return null;
   if (n >= 10000) return `${(n / 1000).toFixed(0)}k+`;
   if (n >= 1000)  return `${(n / 1000).toFixed(1)}k+`;
@@ -47,7 +47,7 @@ const withUtm = (url) => `${url}${url.includes("?") ? "&" : "?"}${UTM}`;
 
 const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"];
 
-const THEME_EMOJI = {
+export const THEME_EMOJI = {
   "Trending":     "🔥",
   "Under ₹500":   "💸",
   "Premium":      "💎",

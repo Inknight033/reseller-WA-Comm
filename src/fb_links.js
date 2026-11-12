@@ -4,6 +4,7 @@
 import fs from "fs";
 import { join } from "path";
 import { FB_GROUPS, getFbGroup } from "./config/fb_groups.js";
+import { getProductMap } from "./cache.js";
 
 export const SHORT_HOST = process.env.FB_SHORT_HOST || "qrate-go.up.railway.app";
 
@@ -22,6 +23,11 @@ const LINKS = {
   android: { campaign: "qrate_intro", playStore: true },
   ios:     { campaign: "qrate_intro", url: "https://apps.apple.com/in/app/qrate-resell-earn-online/id6812978276", noUtm: true },
   wa:      { campaign: "qrate_intro", url: "https://chat.whatsapp.com/JEAu6hZbDuj6P2pvOU9tgq", noUtm: true },
+  // Same links in topic posts, tracked under the topic-post campaign
+  pb:      { campaign: "daily_product_sharing", url: `${QRATE}/browse` },
+  pa:      { campaign: "daily_product_sharing", playStore: true },
+  pi:      { campaign: "daily_product_sharing", url: "https://apps.apple.com/in/app/qrate-resell-earn-online/id6812978276", noUtm: true },
+  pw:      { campaign: "daily_product_sharing", url: "https://chat.whatsapp.com/JEAu6hZbDuj6P2pvOU9tgq", noUtm: true },
 };
 
 const utm = (campaign, group) =>
@@ -67,15 +73,44 @@ export function clickSummary() {
 // links are served, so the admin pages (QR login, /reset, /trigger) never
 // show up on the address we post publicly.
 export function registerFbLinks(app) {
-  app.use((req, res, next) => {
+  app.use(async (req, res, next) => {
     if (req.hostname !== SHORT_HOST) return next();
-    const [, code, key] = req.path.split("/");
-    const group = getFbGroup(code);
-    const link  = LINKS[key];
-    if (!group || !link || req.path.split("/").length !== 3) return res.status(404).send("Not found");
-    logClick(group, key, req);
-    res.redirect(302, target(link, group));
+    try {
+      const url = await resolve(req.path, req);
+      if (!url) return res.status(404).send("Not found");
+      res.redirect(302, url);
+    } catch (e) {
+      console.warn("[FB links]", req.path, e.message);
+      res.redirect(302, `${QRATE}/browse`);
+    }
   });
+}
+
+// /<group>/<link>, /<group>/c/<collection id> or /<group>/p/<product id>
+async function resolve(path, req) {
+  const parts = path.split("/").slice(1);
+  const group = getFbGroup(parts[0]);
+  if (!group) return null;
+
+  if (parts.length === 2 && LINKS[parts[1]]) {
+    logClick(group, parts[1], req);
+    return target(LINKS[parts[1]], group);
+  }
+  if (parts.length !== 3 || !/^[\w-]+$/.test(parts[2])) return null;
+
+  const q = utm("daily_product_sharing", group);
+  if (parts[1] === "c") {
+    logClick(group, `c/${parts[2]}`, req);
+    return withQuery(`${QRATE}/store/collection/${parts[2]}`, q);
+  }
+  if (parts[1] === "p") {
+    // Product pages need the name slug and SKU — look them up; a product that
+    // has left QRate goes to browse instead
+    const p = (await getProductMap()).get(parts[2]);
+    logClick(group, `p/${parts[2]}`, req);
+    return withQuery(p ? p.qrate_url : `${QRATE}/browse`, q);
+  }
+  return null;
 }
 
 // For checking links from the main host: /fb/link?g=f1&l=jw

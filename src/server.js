@@ -11,6 +11,7 @@ import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sende
 import { sendWelcomeSample } from "./community.js";
 import { SAMPLE_PHONES } from "./test_mode.js";
 import { registerFbLinks, clickSummary, fbTarget } from "./fb_links.js";
+import { introText, topicPost, checkGroup } from "./fb_posts.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -239,6 +240,20 @@ export function startQRServer() {
 
   // Facebook short-link clicks per group and link
   app.get("/fb/clicks", (_req, res) => res.json(clickSummary()));
+
+  // Facebook post for a group: /fb/post?g=f1 (intro) or /fb/post?g=f3&topic=sarees/cotton-sarees
+  app.get("/fb/post", async (req, res) => {
+    try {
+      checkGroup(req.query.g);
+      if (!req.query.topic) return res.json({ kind: "intro", text: introText(req.query.g), video: "assets/intro.mp4" });
+      if (!getTopic(req.query.topic)) return res.status(400).json({ error: `Unknown topic: ${req.query.topic}` });
+      const post = await topicPost(req.query.g, req.query.topic);
+      if (!post) return res.status(404).json({ error: "No products for this topic" });
+      res.json({ kind: "topic", ...post });
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
 
   // Where a short link goes: /fb/link?g=f1&l=jw
   app.get("/fb/link", (req, res) => {
