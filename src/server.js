@@ -10,11 +10,15 @@ import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sender.js";
 import { sendWelcomeSample } from "./community.js";
 import { SAMPLE_PHONES } from "./test_mode.js";
+import { registerFbLinks, clickSummary, fbTarget } from "./fb_links.js";
 
 const PORT = process.env.PORT || 3000;
 
 export function startQRServer() {
   const app = express();
+
+  // Facebook short links (only thing served on the short host)
+  registerFbLinks(app);
 
   // Health check (Railway uses this)
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -231,6 +235,16 @@ export function startQRServer() {
         <script>setTimeout(() => location.href='/qr', 5000)</script>
       </body></html>
     `);
+  });
+
+  // Facebook short-link clicks per group and link
+  app.get("/fb/clicks", (_req, res) => res.json(clickSummary()));
+
+  // Where a short link goes: /fb/link?g=f1&l=jw
+  app.get("/fb/link", (req, res) => {
+    const url = fbTarget(req.query.g, req.query.l);
+    if (!url) return res.status(404).send("Unknown group or link");
+    res.type("text/plain").send(url);
   });
 
   // Root redirects to /qr
