@@ -8,6 +8,7 @@ import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
 const TARGET_JIDS = [
   "120363410134784350@g.us", // Resellers - QRate By Shopdeck (community sub-group)
   "120363428254767701@g.us", // Resellers - QRate By Shopdeck - 2 (community sub-group)
+  "120363433731962589@g.us", // Resellers - QRate By Shopdeck - 3 (community sub-group)
 ];
 
 // ── Festival calendar ─────────────────────────────────────────────────────────

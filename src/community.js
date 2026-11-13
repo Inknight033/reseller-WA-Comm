@@ -26,11 +26,13 @@ function getVideoBuffer() {
 export const COMMUNITY_JIDS = [
   "120363410134784350@g.us",
   "120363428254767701@g.us",
+  "120363433731962589@g.us",
 ];
 
 const COMMUNITY_NAMES = {
   "120363410134784350@g.us": "QRate Community 1",
   "120363428254767701@g.us": "QRate Community 2",
+  "120363433731962589@g.us": "QRate Community 3",
 };
 
 const DATA_PATH = process.env.DATA_DIR
