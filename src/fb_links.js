@@ -22,12 +22,12 @@ const LINKS = {
   all:     { campaign: "qrate_intro", url: `${QRATE}/browse` },
   android: { campaign: "qrate_intro", playStore: true },
   ios:     { campaign: "qrate_intro", url: "https://apps.apple.com/in/app/qrate-resell-earn-online/id6812978276", noUtm: true },
-  wa:      { campaign: "qrate_intro", url: "https://chat.whatsapp.com/JEAu6hZbDuj6P2pvOU9tgq", noUtm: true },
+  wa:      { campaign: "qrate_intro", url: "https://chat.whatsapp.com/FoF6hBFPU2c2KCqVQgeXvv", noUtm: true },
   // Same links in topic posts, tracked under the topic-post campaign
   pb:      { campaign: "daily_product_sharing", url: `${QRATE}/browse` },
   pa:      { campaign: "daily_product_sharing", playStore: true },
   pi:      { campaign: "daily_product_sharing", url: "https://apps.apple.com/in/app/qrate-resell-earn-online/id6812978276", noUtm: true },
-  pw:      { campaign: "daily_product_sharing", url: "https://chat.whatsapp.com/JEAu6hZbDuj6P2pvOU9tgq", noUtm: true },
+  pw:      { campaign: "daily_product_sharing", url: "https://chat.whatsapp.com/FoF6hBFPU2c2KCqVQgeXvv", noUtm: true },
 };
 
 const utm = (campaign, group) =>
