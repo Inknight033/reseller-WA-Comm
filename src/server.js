@@ -2,7 +2,7 @@ import express from "express";
 import QRCode from "qrcode";
 import fs from "fs";
 import client from "./client/whatsapp.js";
-import { sendSlot, buildPost } from "./sender.js";
+import { sendSlot, buildPost, TARGET_JIDS } from "./sender.js";
 import { getTopic, allTopics } from "./config/topics.js";
 import { nowIST, getOrCreatePlan, previewPlans } from "./slot_planner.js";
 import { getStockReport } from "./ranking.js";
@@ -87,10 +87,16 @@ export function startQRServer() {
       return res.status(400).json({ error: "Pass ?topic=<one of the topics>", topics: allTopics().map((t) => t.key) });
     }
 
+    // Optional ?group=N (1-based) sends a test post to that group only
+    const onlyGroup = req.query.group ? Number(req.query.group) : undefined;
+    if (onlyGroup !== undefined && !TARGET_JIDS[onlyGroup - 1]) {
+      return res.status(400).json({ error: `group must be 1–${TARGET_JIDS.length}` });
+    }
+
     const { minutes } = nowIST();
     const slot = { hour: Math.floor(minutes / 60), minute: minutes % 60, topic };
-    res.json({ message: `Firing: ${getTopic(topic).label}` });
-    sendSlot(slot).catch((e) => console.error("[/trigger]", e));
+    res.json({ message: `Firing: ${getTopic(topic).label}${onlyGroup ? ` (group ${onlyGroup} only)` : ""}` });
+    sendSlot(slot, { onlyGroup }).catch((e) => console.error("[/trigger]", e));
   });
 
   // Send a sample welcome message to an allow-listed number

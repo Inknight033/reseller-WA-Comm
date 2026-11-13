@@ -5,7 +5,7 @@ import { getTopic } from "./config/topics.js";
 import { PRODUCTS_PER_SHARE } from "./config/schedule.js";
 
 // Hardcoded target JIDs (from /debug/groups)
-const TARGET_JIDS = [
+export const TARGET_JIDS = [
   "120363410134784350@g.us", // Resellers - QRate By Shopdeck (community sub-group)
   "120363428254767701@g.us", // Resellers - QRate By Shopdeck - 2 (community sub-group)
   "120363433731962589@g.us", // Resellers - QRate By Shopdeck - 3 (community sub-group)
@@ -192,7 +192,9 @@ export async function buildPost(topicKey, exclude) {
 }
 
 // Returns { sent, count } so the scheduler can record what happened to the slot
-export async function sendSlot(slot) {
+// A test post (`onlyGroup` = 1-based index into TARGET_JIDS) goes to that group
+// alone and is not recorded, so it doesn't use up products for the real posts.
+export async function sendSlot(slot, { onlyGroup } = {}) {
   const slotTag = `${slot.hour}:${String(slot.minute || 0).padStart(2, "0")}`;
 
   const built = await buildPost(slot.topic);
@@ -201,7 +203,7 @@ export async function sendSlot(slot) {
     return { sent: false, count: 0 };
   }
   const { products, buffers, text, collections } = built;
-  const targetJids = TARGET_JIDS;
+  const targetJids = onlyGroup ? [TARGET_JIDS[onlyGroup - 1]] : TARGET_JIDS;
 
   // Send to each target — one group failing (e.g. bot not a member) doesn't stop the others
   let delivered = 0;
@@ -239,8 +241,10 @@ export async function sendSlot(slot) {
 
   if (!delivered) throw new Error("Post failed for every group");
 
-  recordShared(products, slot);
-  recordCollectionsShared(collections);
+  if (!onlyGroup) {
+    recordShared(products, slot);
+    recordCollectionsShared(collections);
+  }
 
   console.log(`✓ [${slotTag}] ${slot.topic} | ${products.length} products | ${collections.map((c) => c.name).join(" + ")}`);
   return { sent: true, count: products.length };
