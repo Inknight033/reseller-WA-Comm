@@ -10,7 +10,7 @@ export const FB_GROUPS = [
   { code: "f4",  id: "510877313410337",  name: "reseller direct dealer", theme: "general" },
   { code: "f5",  id: "516565522881291",  name: "Branded Kurtis (Avaasa and fusion)", theme: "kurtis" },
   { code: "f6",  id: "3255855754500156", name: "Reselling group", theme: "general" },
-  { code: "f7",  id: "8243042472412571", name: "The Reseller Community", theme: "general" },
+  { code: "f7",  id: "872380030695950", name: "resellers group mumbai", theme: "general" },
   { code: "f8",  id: "421220022231114",  name: "manufacturers and Resellers group", theme: "general" },
   { code: "f9",  id: "979051810497917",  name: "SURPLUS BANGALORE", theme: "general" },
   { code: "f10", id: "647540728711263",  name: "Kurtis Manufacturer", theme: "kurtis" },
