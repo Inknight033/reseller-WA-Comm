@@ -10,17 +10,11 @@ import { runResellerPlanner, loadTodayPlan } from "./reseller_planner.js";
 import { sendDailyResellerCampaign, previewResellerSend } from "./reseller_sender.js";
 import { sendWelcomeSample } from "./community.js";
 import { SAMPLE_PHONES } from "./test_mode.js";
-import { registerFbLinks, clickSummary, fbTarget } from "./fb_links.js";
-import { introText, topicPost, checkGroup } from "./fb_posts.js";
-import { windowsFor, getSlot, loadSlot } from "./fb_planner.js";
 
 const PORT = process.env.PORT || 3000;
 
 export function startQRServer() {
   const app = express();
-
-  // Facebook short links (only thing served on the short host)
-  registerFbLinks(app);
 
   // Health check (Railway uses this)
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -243,64 +237,6 @@ export function startQRServer() {
         <script>setTimeout(() => location.href='/qr', 5000)</script>
       </body></html>
     `);
-  });
-
-  // Facebook short-link clicks per group and link
-  app.get("/fb/clicks", (_req, res) => res.json(clickSummary()));
-
-  // Facebook post for a group: /fb/post?g=f1 (intro) or /fb/post?g=f3&topic=sarees/cotton-sarees
-  app.get("/fb/post", async (req, res) => {
-    try {
-      checkGroup(req.query.g);
-      if (!req.query.topic) return res.json({ kind: "intro", text: introText(req.query.g), video: "assets/intro.mp4" });
-      if (!getTopic(req.query.topic)) return res.status(400).json({ error: `Unknown topic: ${req.query.topic}` });
-      const post = await topicPost(req.query.g, req.query.topic);
-      if (!post) return res.status(404).json({ error: "No products for this topic" });
-      res.json({ kind: "topic", ...post });
-    } catch (e) {
-      res.status(400).json({ error: e.message });
-    }
-  });
-
-  // Facebook day plan: /fb/plan?date=2026-11-13 lists the windows and, for
-  // windows already built, each group's time and topic
-  app.get("/fb/plan", (req, res) => {
-    const date = req.query.date;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return res.status(400).json({ error: "date=YYYY-MM-DD required" });
-    res.json(windowsFor(date).map((w) => {
-      const plan = loadSlot(date, w.slot);
-      return { ...w, built: !!plan, posts: plan?.posts.map(({ g, group, time, topic }) => ({ g, group, time, topic })) };
-    }));
-  });
-
-  // One window's posts, built on first request: /fb/plan/slot?date=2026-11-13&slot=p1
-  app.get("/fb/plan/slot", async (req, res) => {
-    try {
-      res.json(await getSlot(req.query.date, req.query.slot));
-    } catch (e) {
-      res.status(400).json({ error: e.message });
-    }
-  });
-
-  // Record posts made outside the planner (e.g. by hand) so later plans avoid
-  // their topics and products. Body: { date, slot, posts: [{ g, topic, products }] }
-  app.post("/fb/plan/import", express.json({ limit: "1mb" }), (req, res) => {
-    const { date, slot, posts } = req.body || {};
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || !/^[a-z0-9]+$/.test(slot || "") || !Array.isArray(posts)) {
-      return res.status(400).json({ error: "date, slot and posts required" });
-    }
-    if (loadSlot(date, slot)) return res.status(409).json({ error: "already exists" });
-    const dir = `${process.env.DATA_DIR || "data"}/fb_plans`;
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(`${dir}/${date}_${slot}.json`, JSON.stringify({ date, slot, kind: "imported", posts }, null, 2));
-    res.json({ ok: true, posts: posts.length });
-  });
-
-  // Where a short link goes: /fb/link?g=f1&l=jw
-  app.get("/fb/link", (req, res) => {
-    const url = fbTarget(req.query.g, req.query.l);
-    if (!url) return res.status(404).send("Unknown group or link");
-    res.type("text/plain").send(url);
   });
 
   // Root redirects to /qr
